@@ -1,10 +1,7 @@
 package ch.ethz.inf.da.mammoth.warc
 
-import java.io.{ByteArrayInputStream, File}
-import de.l3s.boilerpipe.extractors.ArticleExtractor
+import java.io.ByteArrayInputStream
 import org.apache.commons.io.IOUtils
-import org.apache.hadoop.io.Text
-import org.apache.log4j.Logger
 import org.jwat.warc.{WarcReaderFactory, WarcRecord}
 
 import scala.collection.JavaConversions
@@ -12,15 +9,15 @@ import scala.collection.JavaConversions
 /**
  * Processes WARC files
  */
-object WarcProcessor {
+object WARCProcessor {
 
   /**
    * Splits a WARC file into an iterator of strings representing the individual HTML documents
    *
-   * @param file The WARC file to process
+   * @param contents The contents of the WARC file as a string
    * @return A lazy iterator of strings representing the HTML documents
    */
-  def split(file:String, contents:String): Iterator[(String, String)] = {
+  def split(contents:String): Iterator[(String, String)] = {
 
     // Construct a WARC reader for the file contents
     val reader = WarcReaderFactory.getReader(new ByteArrayInputStream(contents.getBytes("UTF-8")))
