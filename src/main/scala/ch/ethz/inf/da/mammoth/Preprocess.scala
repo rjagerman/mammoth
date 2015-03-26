@@ -1,8 +1,7 @@
 package ch.ethz.inf.da.mammoth
 
-import org.apache.spark.{SparkConf, SparkContext}
 import ch.ethz.inf.da.mammoth.warc.WARCProcessor
-import ch.ethz.inf.da.mammoth.preprocess.HtmlToText
+import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize}
 
 /**
  * Preprocesses the raw HTML data
@@ -26,18 +25,19 @@ object Preprocess {
     val htmlDocuments = files.flatMap(x => WARCProcessor.split(x._2))
 
     // Map each HTML document to its plain text equivalent
-    val plainTextDocuments = htmlDocuments.map(x => (x._1, HtmlToText.process(x._2)))
+    val plainTextDocuments = htmlDocuments.map(x => (x._1, htmlToText(x._2)))
 
-
+    // Tokenize the plain text documents
+    val tokenizedDocuments = plainTextDocuments.map(x => (x._1, tokenize(x._2)))
 
 
 
 
 
     // Print the result
-    for((id:String, text:String) <- plainTextDocuments.collect()) {
+    for((id:String, tokens:Array[String]) <- tokenizedDocuments.collect()) {
       println(id)
-      println(text)
+      println(tokens.mkString(", "))
     }
 
   }
