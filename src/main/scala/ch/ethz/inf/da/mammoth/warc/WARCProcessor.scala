@@ -6,6 +6,8 @@ import org.jwat.warc.{WarcReaderFactory, WarcRecord}
 
 import scala.collection.JavaConversions
 
+case class Document[T](id: String, contents: T)
+
 /**
  * Processes WARC files
  */
@@ -17,7 +19,7 @@ object WARCProcessor {
    * @param contents The contents of the WARC file as a string
    * @return A lazy iterator of strings representing the HTML documents
    */
-  def split(contents:String): Iterator[(String, String)] = {
+  def split(contents:String): Iterator[Document[String]] = {
 
     // Construct a WARC reader for the file contents
     val reader = WarcReaderFactory.getReader(new ByteArrayInputStream(contents.getBytes("UTF-8")))
@@ -29,7 +31,7 @@ object WARCProcessor {
     for (record: WarcRecord <- iterator; if record.getHeader("WARC-Type").value == "response") yield {
       val id = record.getHeader("WARC-TREC-ID").value
       val html = IOUtils.toString(record.getPayloadContent, "UTF-8")
-      (id, html)
+      new Document(id, html)
     }
   }
 
