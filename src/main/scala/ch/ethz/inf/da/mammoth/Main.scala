@@ -9,7 +9,7 @@ import org.apache.spark.rdd.RDD
 /**
  * Preprocesses the raw HTML data
  */
-object Preprocess {
+object Main {
 
   /**
    * Main entry point of the application
@@ -17,7 +17,7 @@ object Preprocess {
    */
   def main(args: Array[String]) {
 
-    // Set up spark
+    // Set up spark context
     val sc = Spark.createContext()
 
     // Get an RDD of all cleaned preprocessed documents

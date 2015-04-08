@@ -11,7 +11,7 @@ package object dictionary {
 
   /**
    * Generates a dictionary by taking the n most frequent words
-   * 
+   *
    * @param documents The documents as an RDD
    * @param n The number of words to take
    * @return A mapping from strings to indices
