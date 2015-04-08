@@ -16,7 +16,7 @@ package object dictionary {
    * @param n The number of words to take
    * @return A mapping from strings to indices
    */
-  def topFrequencyDictionary(documents:RDD[Document[Array[String]]], n:Int): Map[String, Int] = {
+  /*def topFrequencyDictionary(documents:RDD[Document[Array[String]]], n:Int): Map[String, Int] = {
     documents.flatMap(doc => doc.contents)
       .map(word ⇒ (word, 1))        // Map each individual word to the count 1
       .reduceByKey(_ + _)           // Reduce by summing the word counts
@@ -25,6 +25,6 @@ package object dictionary {
       .map(item ⇒ item.swap)        // Swap (count,word) back to (word,count)
       .take(n)                      // Only take the top maxVocabularySize words
       .map(_._1).zipWithIndex.toMap // Convert to a map with indices
-  }
+  }*/
 
 }

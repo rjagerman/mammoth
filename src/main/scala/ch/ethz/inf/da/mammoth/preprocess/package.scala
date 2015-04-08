@@ -38,7 +38,7 @@ package object preprocess {
    * @param input The input tokens
    * @return The lowercase tokens
    */
-  def lowercase(input: Array[String]): Array[String] = input.map(x ⇒ x.toLowerCase())
+  def lowercase(input: Iterable[String]): Iterable[String] = input.map(x ⇒ x.toLowerCase())
 
   /**
    * Removes stopwords
@@ -46,7 +46,7 @@ package object preprocess {
    * @param input The input tokens
    * @return The filtered array of tokens
    */
-  def removeStopwords(input: Array[String]): Array[String] = input.filter(x ⇒ !stopWords.contains(x))
+  def removeStopwords(input: Iterable[String]): Iterable[String] = input.filter(x ⇒ !stopWords.contains(x))
 
   /**
    * Removes words with less than or equal to n letters
@@ -55,7 +55,7 @@ package object preprocess {
    * @param n The minimum amount of letters
    * @return The filtered array of tokens
    */
-  def removeLessThan(input: Array[String], n: Int): Array[String] = input.filter(x ⇒ x.length() > n)
+  def removeLessThan(input: Iterable[String], n: Int): Iterable[String] = input.filter(x ⇒ x.length() > n)
 
   /**
    * Removes words with more than or equal to n letters
@@ -63,6 +63,6 @@ package object preprocess {
    * @param n The maximum amount of letters
    * @return The filtered array of tokens
    */
-  def removeGreaterThan(input: Array[String], n: Int): Array[String] = input.filter(x ⇒ x.length() < n)
+  def removeGreaterThan(input: Iterable[String], n: Int): Iterable[String] = input.filter(x ⇒ x.length() < n)
 
 }
