@@ -5,7 +5,9 @@ import ch.ethz.inf.da.mammoth.warc.splitWarcFile
 import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, removeLessThan, removeGreaterThan}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.DictionaryTF
+import org.apache.spark.mllib.feature.IDF
 import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.clustering.LDA
 
 /**
  * Preprocesses the raw HTML data
@@ -25,18 +27,33 @@ object Main {
     val documents = getDocuments(sc, "hdfs://127.0.0.1:9000/cw-data/*")
 
     // Compute a dictionary with a maximum size. It takes the n most frequent terms
-    val dictionary = new DictionaryTF(1000)
+    val dictionary = new DictionaryTF(10000000)
     dictionary.fit(documents)
 
-    // Print the dictionary
-    for(word <- dictionary.mapping) {
-      println(word)
-    }
+    // Compute document vectors and zip them with identifiers that are ints
+    val tfVectors = dictionary.transform(documents)
+    val tfidfVectors = (new IDF()).fit(tfVectors).transform(tfVectors)
+    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfidfVectors).cache()
 
-    // Print the document vectors as transformed by the dictionary
-    for(vector <- dictionary.transform(documents).collect()) {
-      println(vector)
+    // Compute LDA with 10 topics and a maximum of 10 iterations
+    val numTopics = 100
+    val numIterations = 10
+    val lda = new LDA().setK(numTopics).setMaxIterations(numIterations)
+    val ldaModel = lda.run(ldaInput)
+
+    // Print the computed model and its statistics
+    val avgLogLikelihood = ldaModel.logLikelihood / documents.count()
+    val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
+    val inverseDictionary = dictionary.mapping.map(_.swap).toMap
+    topicIndices.foreach { case (terms, termWeights) =>
+      println("TOPIC:")
+      terms.zip(termWeights).foreach { case (term, weight) =>
+        println(s"${inverseDictionary(term.toInt)}\t$weight")
+      }
+      println()
     }
+    println(s"Avg Log-Likelihood: $avgLogLikelihood")
+
 
   }
 
@@ -48,6 +65,7 @@ object Main {
    * @return An RDD of the cleaned documents
    */
   def getDocuments(sc:SparkContext, input:String): RDD[TokenDocument] = {
+    
     // Distribute all WARC files
     val files = sc.wholeTextFiles(input)
 
