@@ -1,13 +1,16 @@
 package ch.ethz.inf.da.mammoth
 
 import ch.ethz.inf.da.mammoth.document.{TokenDocument, StringDocument}
-import ch.ethz.inf.da.mammoth.warc.splitWarcFile
+import org.apache.commons.io.IOUtils
 import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, removeLessThan, removeGreaterThan}
+import org.apache.hadoop.io.LongWritable
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.DictionaryTF
 import org.apache.spark.mllib.feature.IDF
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.clustering.LDA
+import org.jwat.warc.WarcRecord
+import nl.surfsara.warcutils.WarcInputFormat
 
 /**
  * Preprocesses the raw HTML data
@@ -58,19 +61,27 @@ object Main {
   }
 
   /**
-   * Gets cleaned, preprocessed and tokenized documents from given input
+   * Gets cleaned, preprocessed and tokenized documents from given input location of the WARC files
    *
    * @param sc The spark context
    * @param input The input as an URL (e.g. hdfs://...)
    * @return An RDD of the cleaned documents
    */
   def getDocuments(sc:SparkContext, input:String): RDD[TokenDocument] = {
-    
-    // Distribute all WARC files
-    val files = sc.wholeTextFiles(input)
 
-    // Flat map each WARC file to multiple HTML documents
-    val htmlDocuments = files.flatMap(x ⇒ splitWarcFile(x._2))
+    // Get the RDD representing individual WARC records
+    val warcRecords:RDD[(LongWritable, WarcRecord)] =
+      sc.newAPIHadoopFile(input, classOf[WarcInputFormat], classOf[LongWritable], classOf[WarcRecord])
+
+    // Filter out records that are not reponses and get the HTML contents from the remaining WARC records
+    val htmlDocuments = warcRecords.filter {
+      record => record._2.getHeader("WARC-Type").value == "response"
+    }.map {
+      record =>
+        val id = record._2.getHeader("WARC-TREC-ID").value
+        val html = IOUtils.toString(record._2.getPayloadContent, "UTF-8")
+        new StringDocument(id, html)
+    }
 
     // Map each HTML document to its plain text equivalent
     val plainTextDocuments = htmlDocuments.map(doc ⇒ new StringDocument(doc.id, htmlToText(doc.contents)))

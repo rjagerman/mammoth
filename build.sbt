@@ -17,6 +17,13 @@ libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.3.0"
 libraryDependencies += "org.jwat" % "jwat-warc" % "1.0.1"
 
 
+// WARC utils
+
+resolvers += "SURFSARA repository" at "http://beehub.nl/surfsara-repo/releases"
+
+libraryDependencies += "SURFsara" % "warcutils" % "1.2"
+
+
 // Apache Commons IO
 
 libraryDependencies += "commons-io" % "commons-io" % "2.4"
