@@ -1,15 +1,14 @@
-package ch.ethz.inf.da.mammoth.feature
+package org.apache.spark.mllib.feature
 
 import java.lang.{Iterable => JavaIterable}
 
-import scala.collection.JavaConverters._
-import scala.collection.mutable
-
+import org.apache.spark.SparkContext._
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.api.java.JavaRDD
-import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.SparkContext._
+
+import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 /**
  * :: Experimental ::

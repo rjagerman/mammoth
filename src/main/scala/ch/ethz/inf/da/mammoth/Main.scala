@@ -1,9 +1,10 @@
 package ch.ethz.inf.da.mammoth
 
-import ch.ethz.inf.da.mammoth.feature.DictionaryTF
-import ch.ethz.inf.da.mammoth.warc.{WARCProcessor, Document, TextDocument, TokenDocument}
+import ch.ethz.inf.da.mammoth.document.{TokenDocument, StringDocument}
+import ch.ethz.inf.da.mammoth.warc.splitWarcFile
 import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, removeLessThan, removeGreaterThan}
-import org.apache.spark.SparkContext
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.mllib.feature.DictionaryTF
 import org.apache.spark.rdd.RDD
 
 /**
@@ -18,7 +19,7 @@ object Main {
   def main(args: Array[String]) {
 
     // Set up spark context
-    val sc = Spark.createContext()
+    val sc = createSparkContext()
 
     // Get an RDD of all cleaned preprocessed documents
     val documents = getDocuments(sc, "hdfs://127.0.0.1:9000/cw-data/*")
@@ -51,10 +52,10 @@ object Main {
     val files = sc.wholeTextFiles(input)
 
     // Flat map each WARC file to multiple HTML documents
-    val htmlDocuments = files.flatMap(x ⇒ WARCProcessor.split(x._2))
+    val htmlDocuments = files.flatMap(x ⇒ splitWarcFile(x._2))
 
     // Map each HTML document to its plain text equivalent
-    val plainTextDocuments = htmlDocuments.map(doc ⇒ new TextDocument(doc.id, htmlToText(doc.contents)))
+    val plainTextDocuments = htmlDocuments.map(doc ⇒ new StringDocument(doc.id, htmlToText(doc.contents)))
 
     // Tokenize the plain text documents
     val tokenizedDocuments = plainTextDocuments.map(doc ⇒ new TokenDocument(doc.id, tokenize(doc.contents)))
@@ -66,6 +67,17 @@ object Main {
 
     tokenizedDocuments.map(doc ⇒ new TokenDocument(doc.id, textProcess(doc.tokens)))
 
+  }
+
+  /**
+   * Creates a spark context
+   * @return The spark context
+   */
+  def createSparkContext(): SparkContext = {
+    val sparkConf = new SparkConf().setAppName("Mammoth")
+    sparkConf.set("local", "true")
+    sparkConf.setMaster("local[*]")
+    new SparkContext(sparkConf)
   }
 
 }
