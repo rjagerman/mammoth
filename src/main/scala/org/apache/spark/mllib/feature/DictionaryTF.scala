@@ -6,6 +6,7 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -20,6 +21,7 @@ import scala.collection.mutable
 class DictionaryTF(val numFeatures: Int) extends Serializable {
 
   var mapping = Map[Any, Int]()
+
 
   def this() = this(1 << 20)
 
