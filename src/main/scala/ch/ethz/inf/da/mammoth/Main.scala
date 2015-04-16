@@ -27,12 +27,13 @@ object Main {
     val numTopics = 10
     val numIterations = 10
     val vocabularySize = 10000
+    val fileLocation = "hdfs://127.0.0.1:9000/cw-data/*"
 
     // Set up spark context
     val sc = createSparkContext()
 
     // Get an RDD of all cleaned preprocessed documents
-    val documents = getDocuments(sc, "hdfs://127.0.0.1:9000/cw-data/*")
+    val documents = getDocuments(sc, fileLocation)
 
     // Compute a dictionary with a maximum size. It takes the n most frequent terms
     val dictionary = new DictionaryTF(vocabularySize)
