@@ -13,7 +13,7 @@ import org.jwat.warc.WarcRecord
 import nl.surfsara.warcutils.WarcInputFormat
 
 /**
- * Preprocesses the raw HTML data
+ * Main application
  */
 object Main {
 
@@ -104,6 +104,7 @@ object Main {
 
   /**
    * Creates a spark context
+   *
    * @return The spark context
    */
   def createSparkContext(): SparkContext = {
