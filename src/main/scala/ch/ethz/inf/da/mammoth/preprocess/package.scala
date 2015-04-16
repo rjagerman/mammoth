@@ -1,5 +1,6 @@
 package ch.ethz.inf.da.mammoth
 
+import com.github.aztek.porterstemmer.PorterStemmer
 import de.l3s.boilerpipe.extractors.ArticleExtractor
 
 /**
@@ -94,6 +95,14 @@ package object preprocess {
    * @return The filtered array of tokens
    */
   def removeStopwords(input: Iterable[String]): Iterable[String] = input.filter(x ⇒ !stopWords.contains(x))
+
+  /**
+   * Stems words using the Porter Stemmer
+   *
+   * @param input The input tokens
+   * @return The stemmed tokens
+   */
+  def stem(input: Iterable[String]): Iterable[String] = input.map(x ⇒ PorterStemmer.stem(x))
 
   /**
    * Removes words with less than or equal to n letters
