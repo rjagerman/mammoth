@@ -2,7 +2,7 @@ package ch.ethz.inf.da.mammoth
 
 import ch.ethz.inf.da.mammoth.document.{TokenDocument, StringDocument}
 import org.apache.commons.io.IOUtils
-import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, removeLessThan, removeGreaterThan}
+import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, stem, removeLessThan, removeGreaterThan}
 import org.apache.hadoop.io.LongWritable
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.DictionaryTF
@@ -23,6 +23,11 @@ object Main {
    */
   def main(args: Array[String]) {
 
+    // Options to configure
+    val numTopics = 10
+    val numIterations = 10
+    val vocabularySize = 10000
+
     // Set up spark context
     val sc = createSparkContext()
 
@@ -30,24 +35,22 @@ object Main {
     val documents = getDocuments(sc, "hdfs://127.0.0.1:9000/cw-data/*")
 
     // Compute a dictionary with a maximum size. It takes the n most frequent terms
-    val dictionary = new DictionaryTF(10000000)
+    val dictionary = new DictionaryTF(vocabularySize)
     dictionary.fit(documents)
 
     // Compute document vectors and zip them with identifiers that are ints
     val tfVectors = dictionary.transform(documents)
-    val tfidfVectors = (new IDF()).fit(tfVectors).transform(tfVectors)
+    val tfidfVectors = new IDF().fit(tfVectors).transform(tfVectors)
     val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfidfVectors).cache()
 
-    // Compute LDA with 10 topics and a maximum of 10 iterations
-    val numTopics = 100
-    val numIterations = 10
+    // Compute LDA with a specified number of topics and a specified number of 10 iterations
     val lda = new LDA().setK(numTopics).setMaxIterations(numIterations)
     val ldaModel = lda.run(ldaInput)
 
     // Print the computed model and its statistics
     val avgLogLikelihood = ldaModel.logLikelihood / documents.count()
     val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
-    val inverseDictionary = dictionary.mapping.map(_.swap).toMap
+    val inverseDictionary = dictionary.mapping.map(_.swap)
     topicIndices.foreach { case (terms, termWeights) =>
       println("TOPIC:")
       terms.zip(termWeights).foreach { case (term, weight) =>
@@ -92,7 +95,7 @@ object Main {
     // Perform text preprocessing on the tokens
     // Convert to lowercase, remove stopwords, remove very small and very large words:
     def textProcess(tokens:Iterable[String]): Iterable[String] =
-      removeGreaterThan(removeLessThan(removeStopwords(lowercase(tokens)), 2), 30)
+      stem(removeGreaterThan(removeLessThan(removeStopwords(lowercase(tokens)), 2), 30))
 
     tokenizedDocuments.map(doc ⇒ new TokenDocument(doc.id, textProcess(doc.tokens)))
 
