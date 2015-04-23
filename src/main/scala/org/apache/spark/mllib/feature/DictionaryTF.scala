@@ -2,7 +2,6 @@ package org.apache.spark.mllib.feature
 
 import java.lang.{Iterable => JavaIterable}
 
-import org.apache.spark.SparkContext._
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
@@ -15,15 +14,11 @@ import scala.collection.mutable
  * :: Experimental ::
  * Maps a sequence of terms to their term frequencies using a limited-size dictionary that takes the most frequent terms
  *
- * @param numFeatures number of features (default: 2^20^)
+ * @param mapping A map from terms (Any) to integer indices
+ * @param numFeatures The number of features
  */
 @Experimental
-class DictionaryTF(val numFeatures: Int) extends Serializable {
-
-  var mapping = Map[Any, Int]()
-
-
-  def this() = this(1 << 20)
+class DictionaryTF(val mapping: Map[Any, Int], numFeatures: Int) extends Serializable {
 
   /**
    * Returns the index of the input term.
@@ -34,20 +29,6 @@ class DictionaryTF(val numFeatures: Int) extends Serializable {
    * Checks if an index for given term exists in the dictionary.
    */
   def hasIndex(term: Any): Boolean = this.mapping.keySet.contains(term)
-
-  /**
-   * Fits the dictionary transformer to given dataset
-   */
-  def fit[D <: Iterable[_]](dataset: RDD[D]) = {
-    this.mapping = dataset.flatMap(doc => doc)
-      .map(word ⇒ (word, 1))        // Map each individual word to the count 1
-      .reduceByKey(_ + _)           // Reduce by summing the word counts
-      .map(item ⇒ item.swap)        // Swap (word,count) to (count,word)
-      .sortByKey(false, 1)          // Sort by key (the counts)
-      .map(item ⇒ item.swap)        // Swap (count,word) back to (word,count)
-      .take(numFeatures)            // Only take the top maxVocabularySize words
-      .map(_._1).zipWithIndex.toMap // Convert to a map with indices
-  }
 
   /**
    * Transforms the input document into a sparse term frequency vector.
