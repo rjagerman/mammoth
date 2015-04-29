@@ -38,14 +38,21 @@ libraryDependencies += "net.sourceforge.nekohtml" % "nekohtml" % "1.9.21"
 libraryDependencies += "xerces" % "xercesImpl" % "2.11.0"
 
 
+// Scopt
+
+libraryDependencies += "com.github.scopt" %% "scopt" % "3.3.0"
+
+
+// Unit tests
+
+libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.4" % "test"
+
+
 // Resolvers
 
 resolvers += "Akka Repository" at "http://repo.akka.io/releases/"
 
 resolvers += "boilerpipe-m2-repo" at "http://boilerpipe.googlecode.com/svn/repo/"
 
-
-// Unit tests
-
-libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.4" % "test"
+resolvers += Resolver.sonatypeRepo("public")
 

@@ -1,15 +1,19 @@
 package ch.ethz.inf.da.mammoth
 
-import ch.ethz.inf.da.mammoth.document.{TokenDocument, StringDocument}
-import org.apache.commons.io.IOUtils
-import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, stem, removeLessThan, removeGreaterThan}
-import org.apache.hadoop.io.LongWritable
+import ch.ethz.inf.da.mammoth.io.DatasetReader
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.{Dictionary}
-import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.clustering.LDA
-import org.jwat.warc.WarcRecord
-import nl.surfsara.warcutils.WarcInputFormat
+
+/**
+ * Defines the command line options
+ */
+case class Config(
+  numTopics: Int = 10,
+  numIterations: Int = 10,
+  vocabularySize: Int = 10000000,
+  datasetLocation: String = ""
+)
 
 /**
  * Main application
@@ -17,10 +21,45 @@ import nl.surfsara.warcutils.WarcInputFormat
 object Main {
 
   /**
-   * Main entry point of the application
-   * @param args The command-line arguments
+   * Entry point of the application
+   * This parses the command line options and executes the run method
+   *
+   * @param args The command line arguments
    */
-  def main(args: Array[String]) {
+  def main(args:Array[String]) {
+
+    val default = new Config()
+    val parser = new scopt.OptionParser[Config]("") {
+      head("Mammoth", "0.1")
+
+      opt[String]('d', "dataset") required() action {
+        (x, c) => c.copy(datasetLocation = x)
+      } text("The directory where the dataset is located")
+
+      opt[Int]('t', "topics") action {
+        (x, c) => c.copy(numTopics = x)
+      } text(s"The number of topics (default: ${default.numTopics})")
+
+      opt[Int]('i', "iterations") action {
+        (x, c) => c.copy(numIterations = x)
+      } text(s"The number of iterations (default: ${default.numIterations})")
+
+      opt[Int]('v', "vocabulary") action {
+        (x, c) => c.copy(vocabularySize = x)
+      } text(s"The (maximum) size of the vocabulary (default: ${default.vocabularySize})")
+
+    }
+
+    parser.parse(args, Config()) map (run)
+
+  }
+
+  /**
+   * Runs the topic modeling
+   *
+   * @param config The command-line arguments as a configuration
+   */
+  def run(config: Config) {
 
     // Options to configure
     val numTopics = 10
@@ -32,7 +71,7 @@ object Main {
     val sc = createSparkContext()
 
     // Get an RDD of all cleaned preprocessed documents
-    val documents = getDocuments(sc, fileLocation)
+    val documents = new DatasetReader(sc).getDocuments(fileLocation)
 
     // Compute document vectors and zip them with identifiers that are ints
     val dictionary = new Dictionary(vocabularySize).fit(documents)
@@ -47,8 +86,8 @@ object Main {
     val avgLogLikelihood = ldaModel.logLikelihood / documents.count()
     val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
     val inverseDictionary = dictionary.mapping.map(_.swap)
-    topicIndices.foreach { case (terms, termWeights) =>
-      println("TOPIC:")
+    topicIndices.zipWithIndex.foreach { case ((terms, termWeights), idx) =>
+      println(s"TOPIC ${idx}:")
       terms.zip(termWeights).foreach { case (term, weight) =>
         println(s"  ${inverseDictionary(term.toInt)}\t$weight")
       }
@@ -62,52 +101,12 @@ object Main {
   }
 
   /**
-   * Gets cleaned, preprocessed and tokenized documents from given input location of the WARC files
-   *
-   * @param sc The spark context
-   * @param input The input as an URL (e.g. hdfs://...)
-   * @return An RDD of the cleaned documents
-   */
-  def getDocuments(sc:SparkContext, input:String): RDD[TokenDocument] = {
-
-    // Get the RDD representing individual WARC records
-    val warcRecords:RDD[(LongWritable, WarcRecord)] =
-      sc.newAPIHadoopFile(input, classOf[WarcInputFormat], classOf[LongWritable], classOf[WarcRecord])
-
-    // Filter out records that are not reponses and get the HTML contents from the remaining WARC records
-    val htmlDocuments = warcRecords.filter {
-      record => record._2.getHeader("WARC-Type").value == "response"
-    }.map {
-      record =>
-        val id = record._2.getHeader("WARC-TREC-ID").value
-        val html = IOUtils.toString(record._2.getPayloadContent, "UTF-8")
-        new StringDocument(id, html)
-    }
-
-    // Map each HTML document to its plain text equivalent
-    val plainTextDocuments = htmlDocuments.map(doc ⇒ new StringDocument(doc.id, htmlToText(doc.contents)))
-
-    // Tokenize the plain text documents
-    val tokenizedDocuments = plainTextDocuments.map(doc ⇒ new TokenDocument(doc.id, tokenize(doc.contents)))
-
-    // Perform text preprocessing on the tokens
-    // Convert to lowercase, remove stopwords, remove very small and very large words:
-    def textProcess(tokens:Iterable[String]): Iterable[String] =
-      stem(removeGreaterThan(removeLessThan(removeStopwords(lowercase(tokens)), 2), 30))
-
-    tokenizedDocuments.map(doc ⇒ new TokenDocument(doc.id, textProcess(doc.tokens)))
-
-  }
-
-  /**
    * Creates a spark context
    *
    * @return The spark context
    */
   def createSparkContext(): SparkContext = {
     val sparkConf = new SparkConf().setAppName("Mammoth")
-    sparkConf.set("local", "true")
-    sparkConf.setMaster("local[*]")
     new SparkContext(sparkConf)
   }
 
