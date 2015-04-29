@@ -5,7 +5,7 @@ import org.apache.commons.io.IOUtils
 import ch.ethz.inf.da.mammoth.preprocess.{htmlToText, tokenize, lowercase, removeStopwords, stem, removeLessThan, removeGreaterThan}
 import org.apache.hadoop.io.LongWritable
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.feature.{Dictionary, IDF}
+import org.apache.spark.mllib.feature.{Dictionary}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.clustering.LDA
 import org.jwat.warc.WarcRecord
@@ -25,7 +25,7 @@ object Main {
     // Options to configure
     val numTopics = 10
     val numIterations = 10
-    val vocabularySize = 10000
+    val vocabularySize = 10000000
     val fileLocation = "hdfs://127.0.0.1:9000/cw-data/*"
 
     // Set up spark context
@@ -37,8 +37,7 @@ object Main {
     // Compute document vectors and zip them with identifiers that are ints
     val dictionary = new Dictionary(vocabularySize).fit(documents)
     val tfVectors = dictionary.transform(documents)
-    val tfidfVectors = new IDF().fit(tfVectors).transform(tfVectors)
-    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfidfVectors).cache()
+    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors).cache()
 
     // Compute LDA with a specified number of topics and a specified number of 10 iterations
     val lda = new LDA().setK(numTopics).setMaxIterations(numIterations)
