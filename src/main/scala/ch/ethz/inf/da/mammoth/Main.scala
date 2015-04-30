@@ -34,23 +34,23 @@ object Main {
 
       opt[String]('d', "dataset") required() action {
         (x, c) => c.copy(datasetLocation = x)
-      } text("The directory where the dataset is located")
+      } text "The directory where the dataset is located"
 
       opt[Int]('t', "topics") action {
         (x, c) => c.copy(numTopics = x)
-      } text(s"The number of topics (default: ${default.numTopics})")
+      } text s"The number of topics (default: ${default.numTopics})"
 
       opt[Int]('i', "iterations") action {
         (x, c) => c.copy(numIterations = x)
-      } text(s"The number of iterations (default: ${default.numIterations})")
+      } text s"The number of iterations (default: ${default.numIterations})"
 
       opt[Int]('v', "vocabulary") action {
         (x, c) => c.copy(vocabularySize = x)
-      } text(s"The (maximum) size of the vocabulary (default: ${default.vocabularySize})")
+      } text s"The (maximum) size of the vocabulary (default: ${default.vocabularySize})"
 
     }
 
-    parser.parse(args, Config()) map (run)
+    parser.parse(args, Config()) foreach run
 
   }
 
@@ -81,7 +81,7 @@ object Main {
     val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
     val inverseDictionary = dictionary.mapping.map(_.swap)
     topicIndices.zipWithIndex.foreach { case ((terms, termWeights), idx) =>
-      println(s"TOPIC ${idx}:")
+      println(s"TOPIC $idx:")
       terms.zip(termWeights).foreach { case (term, weight) =>
         println(s"  ${inverseDictionary(term.toInt)}\t$weight")
       }
