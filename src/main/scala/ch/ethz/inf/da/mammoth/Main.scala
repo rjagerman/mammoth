@@ -88,9 +88,6 @@ object Main {
       println()
     }
     println(s"Avg Log-Likelihood: $avgLogLikelihood")
-    println()
-    println()
-
 
   }
 
