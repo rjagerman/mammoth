@@ -60,10 +60,10 @@ class DatasetReader(sc:SparkContext) {
   }
 
   /**
-   * Gets cleaned, preprocessed and tokenized documents from given input location of the WARC files
+   * Gets WARC records from files in a directory
    *
-   * @param input
-   * @return
+   * @param input The directory where the files are located
+   * @return An RDD of the WARC records
    */
   def getWarcRecordsFromDirectory(input:String): RDD[WarcRecord] = {
     this.sc.wholeTextFiles(input).flatMap(x => getWarcRecordsFromString(x._2))
@@ -73,7 +73,7 @@ class DatasetReader(sc:SparkContext) {
    * Extracts WARC records from a file
    *
    * @param contents The contents of the WARC file as a string
-   * @return A lazy iterator of WarcRecords
+   * @return An iterator of WarcRecords
    */
   def getWarcRecordsFromString(contents: String): Iterator[WarcRecord] = {
     val reader = WarcReaderFactory.getReader(new ByteArrayInputStream(contents.getBytes("UTF-8")))
@@ -81,10 +81,10 @@ class DatasetReader(sc:SparkContext) {
   }
 
   /**
-   * Extracts an RDD of all WARC records from HDFS
+   * Gets WARC records from files on HDFS
    *
-   * @param input The input as an hdfs URL (e.g. hdfs://...)
-   * @return An RDD of the cleaned documents
+   * @param input The location as an hdfs URL (e.g. hdfs://...)
+   * @return An RDD of the WARC records
    */
   def getWarcRecordsFromHDFS(input:String): RDD[WarcRecord] = {
     val warcRecords:RDD[(LongWritable, WarcRecord)] =
