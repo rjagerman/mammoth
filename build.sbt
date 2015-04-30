@@ -7,9 +7,9 @@ scalaVersion := "2.10.5"
 
 // Spark, Hadoop, Mahout
 
-libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.3.0"
+libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.3.0" % "provided"
 
-libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.3.0"
+libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.3.0" % "provided"
 
 
 // WARC file parser
@@ -56,3 +56,11 @@ resolvers += "boilerpipe-m2-repo" at "http://boilerpipe.googlecode.com/svn/repo/
 
 resolvers += Resolver.sonatypeRepo("public")
 
+
+// Helper for assembly
+assemblyMergeStrategy in assembly := {
+  case PathList("org", "cyberneko", "html", _ *) => MergeStrategy.first
+  case x =>
+    val oldStrategy = (assemblyMergeStrategy in assembly).value
+    oldStrategy(x)
+}
