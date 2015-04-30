@@ -15,23 +15,22 @@ import scala.collection.JavaConversions
 
 /**
  * Helper object for reading the data set
- *
- * @param sc The spark context
  */
-class DatasetReader(sc:SparkContext) {
+object DatasetReader {
 
   /**
    * Gets the documents from given input
    *
+   * @param sc The spark context
    * @param input The input
    * @return
    */
-  def getDocuments(input:String): RDD[TokenDocument] = {
+  def getDocuments(sc:SparkContext, input:String): RDD[TokenDocument] = {
 
     // Get the warc records
     val warcRecords = input match {
-      case url if url.startsWith("hdfs://") => getWarcRecordsFromHDFS(url)
-      case url => getWarcRecordsFromDirectory(url)
+      case url if url.startsWith("hdfs://") => getWarcRecordsFromHDFS(sc, url)
+      case url => getWarcRecordsFromDirectory(sc, url)
     }
 
     // Filter out records that are not reponses and get the HTML contents from the remaining WARC records
@@ -62,11 +61,12 @@ class DatasetReader(sc:SparkContext) {
   /**
    * Gets WARC records from files in a directory
    *
+   * @param sc The spark context
    * @param input The directory where the files are located
    * @return An RDD of the WARC records
    */
-  def getWarcRecordsFromDirectory(input:String): RDD[WarcRecord] = {
-    this.sc.wholeTextFiles(input).flatMap(x => getWarcRecordsFromString(x._2))
+  def getWarcRecordsFromDirectory(sc:SparkContext, input:String): RDD[WarcRecord] = {
+    sc.wholeTextFiles(input).flatMap(x => getWarcRecordsFromString(x._2))
   }
 
   /**
@@ -83,12 +83,13 @@ class DatasetReader(sc:SparkContext) {
   /**
    * Gets WARC records from files on HDFS
    *
+   * @param sc The spark context
    * @param input The location as an hdfs URL (e.g. hdfs://...)
    * @return An RDD of the WARC records
    */
-  def getWarcRecordsFromHDFS(input:String): RDD[WarcRecord] = {
+  def getWarcRecordsFromHDFS(sc:SparkContext, input:String): RDD[WarcRecord] = {
     val warcRecords:RDD[(LongWritable, WarcRecord)] =
-      this.sc.newAPIHadoopFile(input, classOf[WarcInputFormat], classOf[LongWritable], classOf[WarcRecord])
+      sc.newAPIHadoopFile(input, classOf[WarcInputFormat], classOf[LongWritable], classOf[WarcRecord])
     warcRecords.map(x => x._2)
   }
 

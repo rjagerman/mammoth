@@ -65,7 +65,7 @@ object Main {
     val sc = createSparkContext()
 
     // Get an RDD of all cleaned preprocessed documents
-    val documents = new DatasetReader(sc).getDocuments(config.datasetLocation)
+    val documents = DatasetReader.getDocuments(sc, config.datasetLocation)
 
     // Compute document vectors and zip them with identifiers that are ints
     val dictionary = new Dictionary(config.vocabularySize).fit(documents)
