@@ -47,14 +47,10 @@ object DatasetReader {
     val plainTextDocuments = htmlDocuments.map(doc ⇒ new StringDocument(doc.id, htmlToText(doc.contents)))
 
     // Tokenize the plain text documents
-    val tokenizedDocuments = plainTextDocuments.map(doc ⇒ new TokenDocument(doc.id, tokenize(doc.contents)))
+    val tokenizedDocuments = plainTextDocuments.map(doc ⇒ new TokenDocument(doc.id, tokenize(doc.contents) toIterable))
 
-    // Perform text preprocessing on the tokens
-    // Convert to lowercase, remove stopwords, remove very small and very large words:
-    def textProcess(tokens:Iterable[String]): Iterable[String] =
-      stem(removeGreaterThan(removeLessThan(removeStopwords(lowercase(tokens)), 2), 30))
-
-    tokenizedDocuments.map(doc ⇒ new TokenDocument(doc.id, textProcess(doc.tokens)))
+    // Perform actual text preprocessing on the tokens
+    tokenizedDocuments.map(doc ⇒ new TokenDocument(doc.id, preprocess(doc.tokens)))
 
   }
 

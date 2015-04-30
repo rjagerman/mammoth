@@ -65,6 +65,11 @@ package object preprocess {
     "yourselves", "zero")
 
   /**
+   * A simple tokenizer that only matches alphabetical words (a-z) or abbreviations such as U.S.A.
+   */
+  val tokenizerRegex = """([a-zA-Z]\.){2,}|[a-zA-Z]+""".r
+
+  /**
    * Processes an input stream and extracts the plain text
    *
    * @param input The input html
@@ -78,48 +83,21 @@ package object preprocess {
    * @param input The input text
    * @return The tokens
    */
-  def tokenize(input: String): Array[String] = input.split( """\.\.+|\.+[\s$]|[/\,\+\-\!\?\:\(\)\[\]\s"'_\u00A0]+""").filter(!_.isEmpty)
+  def tokenize(input: String): Iterator[String] = for (m <- tokenizerRegex findAllMatchIn input) yield m.toString
 
   /**
-   * Converts tokens into their lowercase equivalent
+   * Performs a basic pipeline of text preprocessing
    *
-   * @param input The input tokens
-   * @return The lowercase tokens
+   * @param input The tokens
+   * @return Preprocessed and cleaned up tokens
    */
-  def lowercase(input: Iterable[String]): Iterable[String] = input.map(x ⇒ x.toLowerCase())
-
-  /**
-   * Removes stopwords
-   *
-   * @param input The input tokens
-   * @return The filtered array of tokens
-   */
-  def removeStopwords(input: Iterable[String]): Iterable[String] = input.filter(x ⇒ !stopWords.contains(x))
-
-  /**
-   * Stems words using the Porter Stemmer
-   *
-   * @param input The input tokens
-   * @return The stemmed tokens
-   */
-  def stem(input: Iterable[String]): Iterable[String] = input.map(x ⇒ PorterStemmer.stem(x))
-
-  /**
-   * Removes words with less than or equal to n letters
-   *
-   * @param input The input tokens
-   * @param n The minimum amount of letters
-   * @return The filtered array of tokens
-   */
-  def removeLessThan(input: Iterable[String], n: Int): Iterable[String] = input.filter(x ⇒ x.length() > n)
-
-  /**
-   * Removes words with more than or equal to n letters
-   *
-   * @param input The input tokens
-   * @param n The maximum amount of letters
-   * @return The filtered array of tokens
-   */
-  def removeGreaterThan(input: Iterable[String], n: Int): Iterable[String] = input.filter(x ⇒ x.length() < n)
+  def preprocess(input: Iterable[String]): Iterable[String] = {
+    input
+      .map(x ⇒ x.toLowerCase()) // Convert everything to lower case
+      .filter(x ⇒ !stopWords.contains(x)) // Remove stop words
+      .map(x ⇒ PorterStemmer.stem(x)) // Stem tokens
+      .filter(x ⇒ x.length() >= 3) // Only allow words with a minimum of 3 characters
+      .filter(x ⇒ x.length() <= 30) // Only allow words with a maximum of 30 characters
+  }
 
 }
