@@ -75,7 +75,7 @@ object Main {
     // Compute document vectors and zip them with identifiers that are ints
     val dictionary = new Dictionary(config.vocabularySize).fit(documents)
     val tfVectors = dictionary.transform(documents)
-    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors).cache()
+    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors)
 
     // Compute LDA with a specified number of topics and a specified number of 10 iterations
     val lda = new LDA().setK(config.numTopics).setMaxIterations(config.numIterations)
