@@ -75,7 +75,11 @@ package object preprocess {
    * @param input The input html
    * @return The plain text representation
    */
-  def htmlToText(input: String): String = ArticleExtractor.INSTANCE.getText(input)
+  def htmlToText(input: String): String = try {
+    ArticleExtractor.INSTANCE.getText(input)
+  } catch {
+    case e => ""
+  }
 
   /**
    * Tokenizes a string
