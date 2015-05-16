@@ -25,12 +25,12 @@ object DatasetReader {
    * @param input The input
    * @return
    */
-  def getDocuments(sc:SparkContext, input:String): RDD[TokenDocument] = {
+  def getDocuments(sc:SparkContext, input:String, partitions:Int): RDD[TokenDocument] = {
 
     // Get the warc records
     val warcRecords = input match {
       case url if url.startsWith("hdfs://") => getWarcRecordsFromHDFS(sc, url)
-      case url => getWarcRecordsFromDirectory(sc, url)
+      case url => getWarcRecordsFromDirectory(sc, url, partitions)
     }
 
     // Filter out records that are not reponses and get the HTML contents from the remaining WARC records
@@ -61,8 +61,8 @@ object DatasetReader {
    * @param input The directory where the files are located
    * @return An RDD of the WARC records
    */
-  def getWarcRecordsFromDirectory(sc:SparkContext, input:String): RDD[WarcRecord] = {
-    sc.wholeTextFiles(input).flatMap(x => getWarcRecordsFromString(x._2))
+  def getWarcRecordsFromDirectory(sc:SparkContext, input:String, partitions:Int): RDD[WarcRecord] = {
+    sc.wholeTextFiles(input, partitions).flatMap(x => getWarcRecordsFromString(x._2))
   }
 
   /**

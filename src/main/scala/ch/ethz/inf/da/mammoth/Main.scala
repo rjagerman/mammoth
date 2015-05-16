@@ -12,6 +12,7 @@ case class Config(
   numTopics: Int = 30,
   numIterations: Int = 25,
   vocabularySize: Int = 60000,
+  partitions: Int = 8192,
   datasetLocation: String = ""
 )
 
@@ -48,6 +49,10 @@ object Main {
         (x, c) => c.copy(vocabularySize = x)
       } text s"The (maximum) size of the vocabulary (default: ${default.vocabularySize})"
 
+      opt[Int]('p', "partitions") action {
+        (x, c) => c.copy(partitions = x)
+      } text s"The number of partitions to split the data in (default: ${default.partitions})"
+
     }
 
     parser.parse(args, Config()) foreach run
@@ -65,7 +70,7 @@ object Main {
     val sc = createSparkContext()
 
     // Get an RDD of all cleaned preprocessed documents
-    val documents = DatasetReader.getDocuments(sc, config.datasetLocation)
+    val documents = DatasetReader.getDocuments(sc, config.datasetLocation, config.partitions)
 
     // Compute document vectors and zip them with identifiers that are ints
     val dictionary = new Dictionary(config.vocabularySize).fit(documents)
