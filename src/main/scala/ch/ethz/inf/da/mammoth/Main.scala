@@ -9,9 +9,9 @@ import org.apache.spark.mllib.clustering.LDA
  * Defines the command line options
  */
 case class Config(
-  numTopics: Int = 10,
-  numIterations: Int = 10,
-  vocabularySize: Int = 10000000,
+  numTopics: Int = 30,
+  numIterations: Int = 25,
+  vocabularySize: Int = 60000,
   datasetLocation: String = ""
 )
 
