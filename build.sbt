@@ -43,6 +43,11 @@ libraryDependencies += "xerces" % "xercesImpl" % "2.11.0"
 libraryDependencies += "com.github.scopt" %% "scopt" % "3.3.0"
 
 
+// Pickling
+
+libraryDependencies += "org.scala-lang.modules" %% "scala-pickling" % "0.10.0"
+
+
 // Unit tests
 
 libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.4" % "test"
@@ -55,6 +60,8 @@ resolvers += "Akka Repository" at "http://repo.akka.io/releases/"
 resolvers += "boilerpipe-m2-repo" at "http://boilerpipe.googlecode.com/svn/repo/"
 
 resolvers += Resolver.sonatypeRepo("public")
+
+resolvers += Resolver.sonatypeRepo("snapshots")
 
 
 // Helper for assembly

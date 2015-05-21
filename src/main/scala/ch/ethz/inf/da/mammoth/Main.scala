@@ -1,8 +1,8 @@
 package ch.ethz.inf.da.mammoth
 
-import ch.ethz.inf.da.mammoth.io.DatasetReader
+import ch.ethz.inf.da.mammoth.io.{DatasetReader, DictionaryIO}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.feature.{Dictionary}
+import org.apache.spark.mllib.feature.{DictionaryTF, Dictionary}
 import org.apache.spark.mllib.clustering.LDA
 
 /**
@@ -13,7 +13,8 @@ case class Config(
   numIterations: Int = 25,
   vocabularySize: Int = 60000,
   partitions: Int = 8192,
-  datasetLocation: String = ""
+  datasetLocation: String = "",
+  dictionaryLocation: String = ""
 )
 
 /**
@@ -36,6 +37,10 @@ object Main {
       opt[String]('d', "dataset") required() action {
         (x, c) => c.copy(datasetLocation = x)
       } text "The directory where the dataset is located"
+
+      opt[String]("dictionary") action {
+        (x, c) => c.copy(dictionaryLocation = x)
+      } text "The dictionary file (if it does not exist, a dictionary will be created there)"
 
       opt[Int]('t', "topics") action {
         (x, c) => c.copy(numTopics = x)
@@ -72,9 +77,16 @@ object Main {
     // Get an RDD of all cleaned preprocessed documents
     val documents = DatasetReader.getDocuments(sc, config.datasetLocation, config.partitions)
 
-    // Compute document vectors and zip them with identifiers that are ints
-    val dictionary = new Dictionary(config.vocabularySize).fit(documents)
-    val tfVectors = dictionary.transform(documents)
+    // Read or compute dictionary (if computed, write to file if location was specified)
+    // We broadcast the dictionary to the spark nodes to prevent unnecessary network traffic
+    val dictionary = sc.broadcast(config.dictionaryLocation match {
+      case x if new java.io.File(x).exists => DictionaryIO.read(x)
+      case x if x != "" => DictionaryIO.write(x, new Dictionary(config.vocabularySize).fit(documents))
+      case _ => new Dictionary(config.vocabularySize).fit(documents)
+    })
+
+    // Compute document vectors and zip them with identifiers that are longs
+    val tfVectors = dictionary.value.transform(documents)
     val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors)
 
     // Compute LDA with a specified number of topics and a specified number of 10 iterations
@@ -84,7 +96,7 @@ object Main {
     // Print the computed model and its statistics
     val avgLogLikelihood = ldaModel.logLikelihood / documents.count()
     val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
-    val inverseDictionary = dictionary.mapping.map(_.swap)
+    val inverseDictionary = dictionary.value.mapping.map(_.swap)
     topicIndices.zipWithIndex.foreach { case ((terms, termWeights), idx) =>
       println(s"TOPIC $idx:")
       terms.zip(termWeights).foreach { case (term, weight) =>

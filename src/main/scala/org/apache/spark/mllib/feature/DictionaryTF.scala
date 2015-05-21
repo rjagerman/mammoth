@@ -18,7 +18,7 @@ import scala.collection.mutable
  * @param numFeatures The number of features
  */
 @Experimental
-class DictionaryTF(val mapping: Map[Any, Int], numFeatures: Int) extends Serializable {
+class DictionaryTF(val mapping: Map[Any, Int], var numFeatures: Int) extends Serializable {
 
   /**
    * Returns the index of the input term.

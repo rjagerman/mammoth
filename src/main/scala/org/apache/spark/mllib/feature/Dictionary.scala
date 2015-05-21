@@ -30,7 +30,7 @@ class Dictionary(numFeatures: Int) {
       .map(item ⇒ item.swap)         // Swap (word,count) to (count,word)
       .sortByKey(false, 1)           // Sort by key (the counts)
       .map(item ⇒ item.swap)         // Swap (count,word) back to (word,count)
-      .take(numFeatures)             // Only take the top maxVocabularySize words
+      .take(numFeatures)             // Only take the top n words
       .map(_._1).zipWithIndex.toMap  // Convert to a map with indices
 
     new DictionaryTF(map, numFeatures)
