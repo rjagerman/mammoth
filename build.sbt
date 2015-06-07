@@ -7,9 +7,9 @@ scalaVersion := "2.10.5"
 
 // Spark, Hadoop, Mahout
 
-libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.3.0" % "provided"
+libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.3.1" % "provided"
 
-libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.3.0" % "provided"
+libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.3.1" % "provided"
 
 
 // WARC file parser
