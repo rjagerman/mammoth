@@ -1,16 +1,18 @@
 package ch.ethz.inf.da.mammoth
 
+import breeze.linalg.SparseVector
 import ch.ethz.inf.da.mammoth.io.{DatasetReader, DictionaryIO}
+import ch.ethz.inf.da.mammoth.lda.DistributedLDA
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.feature.{DictionaryTF, Dictionary}
-import org.apache.spark.mllib.clustering.LDA
+import org.apache.spark.mllib.feature.Dictionary
 
 /**
  * Defines the command line options
  */
 case class Config(
-  numTopics: Int = 30,
-  numIterations: Int = 25,
+  topics: Int = 30,
+  globalIterations: Int = 20,
+  localIterations: Int = 5,
   vocabularySize: Int = 60000,
   partitions: Int = 8192,
   datasetLocation: String = "",
@@ -43,12 +45,16 @@ object Main {
       } text "The dictionary file (if it does not exist, a dictionary will be created there)"
 
       opt[Int]('t', "topics") action {
-        (x, c) => c.copy(numTopics = x)
-      } text s"The number of topics (default: ${default.numTopics})"
+        (x, c) => c.copy(topics = x)
+      } text s"The number of topics (default: ${default.topics})"
 
-      opt[Int]('i', "iterations") action {
-        (x, c) => c.copy(numIterations = x)
-      } text s"The number of iterations (default: ${default.numIterations})"
+      opt[Int]('g', "globalIterations") action {
+        (x, c) => c.copy(globalIterations = x)
+      } text s"The number of global iterations (default: ${default.globalIterations})"
+
+      opt[Int]('l', "localIterations") action {
+        (x, c) => c.copy(localIterations = x)
+      } text s"The number of local iterations (default: ${default.localIterations})"
 
       opt[Int]('v', "vocabulary") action {
         (x, c) => c.copy(vocabularySize = x)
@@ -87,8 +93,28 @@ object Main {
 
     // Compute document vectors and zip them with identifiers that are longs
     val tfVectors = dictionary.value.transform(documents)
-    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors)
 
+    // Convert to sparse vectors in breeze format
+    val sparseInput = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector])
+    val breezeInput = sparseInput.map(v => new SparseVector[Double](v.indices, v.values, v.size))
+
+    println("Done")
+
+    // Construct LDA object
+    val lda = new DistributedLDA(features = dictionary.value.numFeatures)
+      .setTopics(config.topics)
+      .setGlobalIterations(config.globalIterations)
+      .setLocalIterations(config.localIterations)
+
+    // Fit LDA model to data
+    val model = lda.fit(breezeInput, dictionary.value)
+
+    // Print topics
+    println("Final found topics")
+    model.printTopics(dictionary.value, 25)
+
+    /* LDA using MLLib
+    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors)
     // Compute LDA with a specified number of topics and a specified number of 10 iterations
     val lda = new LDA().setK(config.numTopics).setMaxIterations(config.numIterations)
     val ldaModel = lda.run(ldaInput)
@@ -105,6 +131,7 @@ object Main {
       println()
     }
     println(s"Avg Log-Likelihood: $avgLogLikelihood")
+    */
 
   }
 
