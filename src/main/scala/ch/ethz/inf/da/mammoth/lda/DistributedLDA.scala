@@ -91,7 +91,7 @@ class DistributedLDA(private var features: Int,
   def fit(documents: RDD[SparseVector[Double]], dictionary: DictionaryTF): LDAModel = {
 
     // Initialize model with random topics
-    var model = LDAModel.createRandomModel(topics, features, documents.count())
+    var model = LDAModel.createRandomModel(topics, features, 0)
 
     // Perform LDA with multiple iterations. Each iterations computes the local topic models for all partitions of the
     // data set and combines them into a global topic model.

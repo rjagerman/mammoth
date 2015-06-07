@@ -37,6 +37,11 @@ class LDASolver(iterations:Int,
   )
 
   /**
+   * Set the model's number of documents to the size of the data we will train on
+   */
+  model.documents = data.length
+
+  /**
    * Performs a single EStep.
    */
   override def EStep(): Unit = {

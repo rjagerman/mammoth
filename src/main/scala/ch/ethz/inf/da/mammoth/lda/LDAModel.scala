@@ -15,7 +15,7 @@ import org.apache.spark.mllib.feature.DictionaryTF
  */
 class LDAModel(val topics: Int,
                val features: Int,
-               val documents: Long,
+               var documents: Long,
                var β: DenseMatrix[Double]) extends Serializable {
 
   /**
