@@ -86,7 +86,7 @@ object Main {
     // Read or compute dictionary (if computed, write to file if location was specified)
     // We broadcast the dictionary to the spark nodes to prevent unnecessary network traffic
     val dictionary = sc.broadcast(config.dictionaryLocation match {
-      case x if new java.io.File(x).exists => DictionaryIO.read(x)
+      case x if new java.io.File(x).exists => DictionaryIO.read(x, config.vocabularySize)
       case x if x != "" => DictionaryIO.write(x, new Dictionary(config.vocabularySize).fit(documents))
       case _ => new Dictionary(config.vocabularySize).fit(documents)
     })
