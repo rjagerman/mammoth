@@ -56,7 +56,7 @@ class LDAModel(val topics: Int,
    * @param n The maximum number of terms to print
    */
   def printTopics(dictionary: DictionaryTF, n: Int = 20): Unit = {
-    this.topics(dictionary, 10).zipWithIndex.foreach {
+    this.topics(dictionary, n).zipWithIndex.foreach {
       case (x, k) => println(s"Topic $k"); x.foreach {
         case (w, value) => println(s"  $w " + " "*math.max(1, 30 - s"$w".length()) + s" $value")
       }
