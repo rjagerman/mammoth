@@ -47,7 +47,6 @@ class LDASolver(iterations:Int,
   override def EStep(): Unit = {
 
     // Iterate over all documents i (in this partition)
-    println("EStep...")
     for (i <- data.indices) {
 
       // Iterate over non-zero features j of document i
@@ -67,7 +66,6 @@ class LDASolver(iterations:Int,
         }
       }
     }
-    println("Done!")
 
   }
 
@@ -75,10 +73,8 @@ class LDASolver(iterations:Int,
    * Performs a single MStep.
    */
   override def MStep(): Unit = {
-    println("MStep...")
     this.MStepθ()
     this.MStepβ()
-    println("Done!")
   }
 
   /**
@@ -86,11 +82,10 @@ class LDASolver(iterations:Int,
    */
   def MStepθ(): Unit = {
 
-    println("  Computing θ")
-
     // Iterate over all documents i (in this partition)
     for (i <- data.indices) {
 
+      // Compute 1.0 / C_i
       val C_i = 1.0 / data(i).activeValuesIterator.sum
 
       // Iterate over all topics k
@@ -111,13 +106,10 @@ class LDASolver(iterations:Int,
    */
   def MStepβ(): Unit = {
 
-    println("  Computing β")
-
     // Iterate over all topics k
     for (k <- 0 until model.topics) {
 
-      // Compute C_k
-      //println(s"Computing C_$k")
+      // Compute 1.0 / C_k
       val C_k = 1.0 / data.indices.map { i =>
         data(i).activeIterator.map {
           case (j, value) => π((i,j,k)) * value
@@ -125,7 +117,6 @@ class LDASolver(iterations:Int,
       }.sum
 
       // Compute β_{j,k} by constructing a new vector β_{_,k} for all j in one go
-      //println(s"Computing β_{j,$k} for all non-zero j")
       model.β(::, k) := DenseVector.zeros[Double](model.features)
       data.indices.foreach {
         i => data(i).activeIterator.foreach {
@@ -133,10 +124,8 @@ class LDASolver(iterations:Int,
         }
       }
 
+      // Normalize by multiplying C_k
       model.β(::, k) :*= C_k
-      /*( (0 until model.features).map {
-        j => C_k * data.indices.map { i => data(i)(j) * π.getOrElse((i,j,k), 0.0) }.sum
-      }.toArray )*/
 
     }
 
