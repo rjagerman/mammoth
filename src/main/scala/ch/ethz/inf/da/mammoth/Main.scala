@@ -111,26 +111,6 @@ object Main {
     println("Final found topics")
     model.printTopics(dictionary.value, 25)
 
-    /* LDA using MLLib
-    val ldaInput = documents.map(doc => doc.id.replaceAll("""[^0-9]+""", "").toLong).zip(tfVectors)
-    // Compute LDA with a specified number of topics and a specified number of 10 iterations
-    val lda = new LDA().setK(config.numTopics).setMaxIterations(config.numIterations)
-    val ldaModel = lda.run(ldaInput)
-
-    // Print the computed model and its statistics
-    val avgLogLikelihood = ldaModel.logLikelihood / documents.count()
-    val topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 15)
-    val inverseDictionary = dictionary.value.mapping.map(_.swap)
-    topicIndices.zipWithIndex.foreach { case ((terms, termWeights), idx) =>
-      println(s"TOPIC $idx:")
-      terms.zip(termWeights).foreach { case (term, weight) =>
-        println(s"  ${inverseDictionary(term.toInt)}\t$weight")
-      }
-      println()
-    }
-    println(s"Avg Log-Likelihood: $avgLogLikelihood")
-    */
-
   }
 
   /**
