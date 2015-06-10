@@ -1,6 +1,6 @@
 package ch.ethz.inf.da.mammoth.lda
 
-import breeze.linalg.{Matrix, SparseVector, DenseVector}
+import breeze.linalg.{DenseMatrix, Matrix, SparseVector, DenseVector}
 import org.apache.spark.mllib.feature.DictionaryTF
 import org.apache.spark.rdd.RDD
 
@@ -91,11 +91,11 @@ class DistributedLDA(private var features: Int,
   def fit(documents: RDD[SparseVector[Double]], dictionary: DictionaryTF): LDAModel = {
 
     // Initialize model with random topics
-    var model = LDAModel.createRandomModel(topics, features, 0)
+    val model = LDAModel.random(topics, features, 0)
 
     // Perform LDA with multiple iterations. Each iterations computes the local topic models for all partitions of the
     // data set and combines them into a global topic model.
-    for (t <- 1 to globalIterations){
+    for (t <- 1 to globalIterations) {
       println(s"Global iteration ${t}")
 
       // Map each partition to a local LDA Model
@@ -103,11 +103,14 @@ class DistributedLDA(private var features: Int,
       val models = documents.mapPartitions(x => {
         val solver = new LDASolver(li, x.toArray, model)
         solver.solve()
-        Array.fill(1) { model }.toIterator
+        model.β.activeIterator
       })
 
       // Reduce the LDA Models into a single LDA Model used for the next iteration
-      model = models.reduce( _ + _ )
+      // Here the topic-word probabilities for each local model are summed up
+      models.reduceByKey(_ + _).collect().foreach {
+        case ((i,j), v) => model.β(i,j) = v
+      }
 
       // Normalize the model so the topic-word probabilities add up to 1 for each topic
       model.normalize()

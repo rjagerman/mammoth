@@ -79,7 +79,7 @@ object LDAModel {
    * @param seed The random seed used to initialize the model
    * @return A randomly initialized LDA model
    */
-  def createRandomModel(topics:Int, features:Int, documents:Long = 0, seed:Int = 42): LDAModel = {
+  def random(topics:Int, features:Int, documents:Long = 0, seed:Int = 42): LDAModel = {
     val β = DenseMatrix.rand[Double](features, topics, new Uniform(0, 1)(new RandBasis(new MersenneTwister(seed))))
     new LDAModel(topics, features, documents, β)
   }

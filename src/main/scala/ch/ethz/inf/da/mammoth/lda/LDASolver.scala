@@ -132,6 +132,8 @@ class LDASolver(iterations:Int,
           case (j, value) => model.β(j, k) = model.β(j, k) + value * π.getOrElse((i,j,k), 0.0)
         }
       }
+
+      model.β(::, k) :*= C_k
       /*( (0 until model.features).map {
         j => C_k * data.indices.map { i => data(i)(j) * π.getOrElse((i,j,k), 0.0) }.sum
       }.toArray )*/
