@@ -98,8 +98,6 @@ object Main {
     val sparseInput = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector])
     val breezeInput = sparseInput.map(v => new SparseVector[Double](v.indices, v.values, v.size))
 
-    println("Done")
-
     // Construct LDA object
     val lda = new DistributedLDA(features = dictionary.value.numFeatures)
       .setTopics(config.topics)
