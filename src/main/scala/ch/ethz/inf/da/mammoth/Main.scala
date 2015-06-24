@@ -13,6 +13,7 @@ case class Config(
   datasetLocation: String = "",
   dictionaryLocation: String = "",
   initialModel: String = "",
+  finalModel: String = "",
   seed: Int = 42,
   var topics: Int = 30,
   var vocabularySize: Int = 60000,
@@ -49,6 +50,10 @@ object Main {
       opt[String]('i', "Initial model") action {
         (x, c) => c.copy(initialModel = x)
       } text s"The file containing the topic model to initialize with (leave empty to start from a random topic model)"
+
+      opt[String]('f', "Final") action {
+        (x, c) => c.copy(finalModel = x)
+      } text s"The file where the final topic model will be stored"
 
       opt[Int]('s', "Seed") action {
         (x, c) => c.copy(seed = x)
@@ -134,10 +139,14 @@ object Main {
     // Fit the topic model to the data
     val model = lda.fit(input, dictionary.value, initialModel)
 
-    // Print topics of the trained topic model and save the topic model to disk
+    // Print topics of the trained topic model
     println("Final found topics")
     model.printTopics(dictionary.value, 25)
-    TopicModel.write(model, "models/final.model")
+
+    // Save the topic model to disk if a file name was provided
+    if (config.finalModel != "") {
+      TopicModel.write(model, config.finalModel)
+    }
 
   }
 

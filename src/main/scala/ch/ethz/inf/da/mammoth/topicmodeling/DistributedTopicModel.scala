@@ -55,7 +55,6 @@ class DistributedTopicModel(private var features: Int,
       println(s"Topics after iteration $t")
       val topicModel = new TopicModel(β)
       topicModel.printTopics(dictionary, 10)
-      TopicModel.write(topicModel, s"models/iter${t}.model")
 
     }
 
