@@ -47,15 +47,15 @@ object Main {
         (x, c) => c.copy(dictionaryLocation = x)
       } text s"The dictionary file (if it does not exist, a dictionary will be created there)"
 
-      opt[String]('i', "Initial model") action {
+      opt[String]('i', "initial") action {
         (x, c) => c.copy(initialModel = x)
       } text s"The file containing the topic model to initialize with (leave empty to start from a random topic model)"
 
-      opt[String]('f', "Final") action {
+      opt[String]('f', "final") action {
         (x, c) => c.copy(finalModel = x)
       } text s"The file where the final topic model will be stored"
 
-      opt[Int]('s', "Seed") action {
+      opt[Int]('s', "seed") action {
         (x, c) => c.copy(seed = x)
       } text s"The random seed to initialize the topic model with (ignored when an initial model is loaded, default: ${default.seed})"
 
