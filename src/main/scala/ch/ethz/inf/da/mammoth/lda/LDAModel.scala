@@ -1,5 +1,7 @@
 package ch.ethz.inf.da.mammoth.lda
 
+import java.io.File
+
 import breeze.linalg._
 import breeze.stats.distributions.{RandBasis, Uniform}
 import org.apache.commons.math3.random.MersenneTwister
@@ -82,6 +84,43 @@ object LDAModel {
   def random(topics:Int, features:Int, documents:Long = 0, seed:Int = 42): LDAModel = {
     val β = DenseMatrix.rand[Double](features, topics, new Uniform(0, 1)(new RandBasis(new MersenneTwister(seed))))
     new LDAModel(topics, features, documents, β)
+  }
+
+  /**
+   * Returns the topics found by the LDA model as a 2-dimensional list of word probability
+   *
+   * @param dictionary The dictionary to use for the inverse transform
+   * @param n The maximum number of terms to return for a topic (returns the top n)
+   * @return The top n terms from the dictionary
+   */
+  def topics(β: DenseMatrix[Double], dictionary: DictionaryTF, n: Int = 20): List[List[(Any, Double)]] = {
+    val inverseDictionary = dictionary.mapping.map(x => x.swap)
+    (0 until β.cols).map(
+      k => argtopk(β(::, k), n).map(j => (inverseDictionary(j), β(j, k))).toList
+    ).toList
+  }
+
+  /**
+   * Prints the top n terms of each topic to the standard output
+   *
+   * @param dictionary The dictionary to use for the inverse transform
+   * @param n The maximum number of terms to print
+   */
+  def printTopics(β: DenseMatrix[Double], dictionary: DictionaryTF, n: Int = 20): Unit = {
+    LDAModel.topics(β, dictionary, n).zipWithIndex.foreach {
+      case (x, k) => println(s"Topic $k"); x.foreach {
+        case (w, value) => println(s"  $w " + " "*math.max(1, 30 - s"$w".length()) + s" $value")
+      }
+    }
+  }
+
+  /**
+   * Saves the topic model defined by β to disk
+   * @param β The topic model
+   * @param filename The file name
+   */
+  def save(β: DenseMatrix[Double], filename: String): Unit = {
+    breeze.linalg.csvwrite(new File(filename), β, separator = ' ')
   }
 
 }

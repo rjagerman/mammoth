@@ -1,8 +1,14 @@
 package ch.ethz.inf.da.mammoth.lda
 
-import breeze.linalg.{DenseMatrix, Matrix, SparseVector, DenseVector}
+import breeze.linalg._
+import breeze.stats.distributions.{RandBasis, Uniform}
+import org.apache.commons.math3.random.MersenneTwister
+import org.apache.spark.{SparkContext, AccumulableParam, Accumulable}
 import org.apache.spark.mllib.feature.DictionaryTF
+import org.apache.spark.mllib.linalg.{DenseMatrix => DM}
 import org.apache.spark.rdd.RDD
+
+import scala.reflect.ClassTag
 
 /**
  * Distributed LDA implementation
@@ -88,40 +94,41 @@ class DistributedLDA(private var features: Int,
    *
    * @param documents The documents to fit
    */
-  def fit(documents: RDD[SparseVector[Double]], dictionary: DictionaryTF): LDAModel = {
+  def fit(documents: RDD[SparseVector[Double]], dictionary: DictionaryTF, seed: Int = 42): LDAModel = {
 
-    // Initialize model with random topics
-    val model = LDAModel.random(topics, features, 0)
+    // Initialize topic model with random topics
+    var β = DenseMatrix.rand[Double](features, topics, new Uniform(0, 1)(new RandBasis(new MersenneTwister(seed))))
 
     // Perform LDA with multiple iterations. Each iterations computes the local topic models for all partitions of the
     // data set and combines them into a global topic model.
     for (t <- 1 to globalIterations) {
-      println(s"Global iteration ${t}")
+      println(s"Global iteration $t")
 
-      // Map each partition to a local LDA Model
-      val li = localIterations
-      val models = documents.mapPartitions(x => {
-        val solver = new LDASolver(li, x.toArray, model)
+      // Map each partition x to a local LDA Model
+      val models = documents.mapPartitions(partitionData => {
+        val solver = new LDASolver(localIterations, partitionData.toArray, β)
         solver.solve()
-        model.β.activeIterator
+        β.activeIterator.map{ case ((x,y), v) => ((x.toLong << 32) + y.toLong, v) } // Convert (int,int) => long
       })
 
       // Reduce the LDA Models into a single LDA Model used for the next iteration
       // Here the topic-word probabilities for each local model are summed up
-      models.reduceByKey(_ + _).collect().foreach {
-        case ((i,j), v) => model.β(i,j) = v
+      val β_next = DenseMatrix.zeros[Double](features, topics)
+      models.reduceByKey(_ + _).collect.foreach {
+        case (coordinate, v) => β_next((coordinate >> 32).toInt, coordinate.toInt) = v // Convert long => (int,int)
       }
 
       // Normalize the model so the topic-word probabilities add up to 1 for each topic
-      model.normalize()
+      β = β_next(*, ::) :/ sum(β_next(::, *)).toDenseVector // Normalizes by columns (columns sum to 1)
 
       // Print topics
       println(s"Topics after iteration $t")
-      model.printTopics(dictionary, 10)
+      LDAModel.printTopics(β, dictionary, 10)
+      LDAModel.save(β, s"models/iter${t}.model")
 
     }
 
-    model
+    new LDAModel(topics, features, 0, β)
   }
 
 }
