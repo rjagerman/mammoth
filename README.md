@@ -1,5 +1,5 @@
 # Mammoth
-Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/).
+Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/). This project is a continuation of the [Web Scale Data Processing and Mining Project](https://github.com/lukaselmer/ethz-web-scale-data-mining-project/).
 
 ## Deployment
 To compile Mammoth you will need to use [sbt](http://www.scala-sbt.org/), which will take care of all dependencies. You can compile the application from the repository directory by running:
