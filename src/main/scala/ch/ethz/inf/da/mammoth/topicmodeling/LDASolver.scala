@@ -1,9 +1,9 @@
-package ch.ethz.inf.da.mammoth.lda
+package ch.ethz.inf.da.mammoth.topicmodeling
 
 import breeze.linalg._
 
 /**
- * Solves LDA on given data using an EM algorithm
+ * Computes an LDA model on given data using an EM algorithm
  *
  * @param iterations The number of iterations
  * @param data The data as an array of sparse feature vector
@@ -27,7 +27,7 @@ class LDASolver(iterations:Int,
 
   /**
    * Document-topic distributions θ
-   * These are initialized using the topic-word distributions in given LDA model.
+   * These are initialized using the topic-word distributions in given topic model.
    * Indexed by i,k:
    *   i = Document index
    *   k = Topic index

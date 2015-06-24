@@ -1,11 +1,11 @@
-package ch.ethz.inf.da.mammoth.lda
+package ch.ethz.inf.da.mammoth.topicmodeling
 
 /**
  * Base abstraction for a solver using the Expectation-Maximization algorithm.
+ *
+ * @param iterations The number of iterations
  */
 abstract class EMSolver(val iterations:Int) extends Serializable {
-
-  def this() = this(10)
 
   /**
    * Runs the EM algorithm by iteratively calling <code>EStep()</code> and <code>MStep()</code> while checking for
@@ -23,7 +23,8 @@ abstract class EMSolver(val iterations:Int) extends Serializable {
   }
 
   /**
-   * Checks for convergence
+   * Checks for convergence. A subclass can implement this function to check for convergence to stop iterating earlier.
+   *
    * @return Whether the solver has converged.
    */
   def converged(): Boolean = false

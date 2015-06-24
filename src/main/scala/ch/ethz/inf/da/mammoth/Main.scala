@@ -2,7 +2,7 @@ package ch.ethz.inf.da.mammoth
 
 import breeze.linalg.SparseVector
 import ch.ethz.inf.da.mammoth.io.{DatasetReader, DictionaryIO}
-import ch.ethz.inf.da.mammoth.lda.DistributedLDA
+import ch.ethz.inf.da.mammoth.topicmodeling.{TopicModel, DistributedTopicModel}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.Dictionary
 
@@ -10,13 +10,15 @@ import org.apache.spark.mllib.feature.Dictionary
  * Defines the command line options
  */
 case class Config(
-  topics: Int = 30,
+  datasetLocation: String = "",
+  dictionaryLocation: String = "",
+  initialModel: String = "",
+  seed: Int = 42,
+  var topics: Int = 30,
+  var vocabularySize: Int = 60000,
   globalIterations: Int = 20,
   localIterations: Int = 5,
-  vocabularySize: Int = 60000,
-  partitions: Int = 8192,
-  datasetLocation: String = "",
-  dictionaryLocation: String = ""
+  partitions: Int = 8192
 )
 
 /**
@@ -42,11 +44,23 @@ object Main {
 
       opt[String]("dictionary") action {
         (x, c) => c.copy(dictionaryLocation = x)
-      } text "The dictionary file (if it does not exist, a dictionary will be created there)"
+      } text s"The dictionary file (if it does not exist, a dictionary will be created there)"
+
+      opt[String]('i', "Initial model") action {
+        (x, c) => c.copy(initialModel = x)
+      } text s"The file containing the topic model to initialize with (leave empty to start from a random topic model)"
+
+      opt[Int]('s', "Seed") action {
+        (x, c) => c.copy(seed = x)
+      } text s"The random seed to initialize the topic model with (ignored when an initial model is loaded, default: ${default.seed})"
 
       opt[Int]('t', "topics") action {
         (x, c) => c.copy(topics = x)
-      } text s"The number of topics (default: ${default.topics})"
+      } text s"The number of topics (ignored when an initial model is loaded, default: ${default.topics})"
+
+      opt[Int]('v', "vocabulary") action {
+        (x, c) => c.copy(vocabularySize = x)
+      } text s"The (maximum) size of the vocabulary (ignored when an initial model is loaded, default: ${default.vocabularySize})"
 
       opt[Int]('g', "globalIterations") action {
         (x, c) => c.copy(globalIterations = x)
@@ -55,10 +69,6 @@ object Main {
       opt[Int]('l', "localIterations") action {
         (x, c) => c.copy(localIterations = x)
       } text s"The number of local iterations (default: ${default.localIterations})"
-
-      opt[Int]('v', "vocabulary") action {
-        (x, c) => c.copy(vocabularySize = x)
-      } text s"The (maximum) size of the vocabulary (default: ${default.vocabularySize})"
 
       opt[Int]('p', "partitions") action {
         (x, c) => c.copy(partitions = x)
@@ -71,7 +81,7 @@ object Main {
   }
 
   /**
-   * Runs the topic modeling
+   * Runs the application with provided configuration options
    *
    * @param config The command-line arguments as a configuration
    */
@@ -80,36 +90,54 @@ object Main {
     // Set up spark context
     val sc = createSparkContext()
 
+    // Load the initial model or construct one depending on the command-line arguments:
+    val initialModel = config.initialModel match {
+      case x if x != "" => TopicModel.read(x)
+      case _ => TopicModel.random(config.vocabularySize, config.topics, config.seed)
+    }
+
+    // Overwrite number of topics and vocabulary size in case an initial model was loaded from disk
+    config.vocabularySize = initialModel.features
+    config.topics = initialModel.topics
+
     // Get an RDD of all cleaned preprocessed documents
     val documents = DatasetReader.getDocuments(sc, config.datasetLocation, config.partitions)
 
-    // Read or compute dictionary (if computed, write to file if location was specified)
+    // Read or compute dictionary
     // We broadcast the dictionary to the spark nodes to prevent unnecessary network traffic
     val dictionary = sc.broadcast(config.dictionaryLocation match {
+
+      // If the provided dictionary file exist, read it from disk
       case x if new java.io.File(x).exists => DictionaryIO.read(x, config.vocabularySize)
+
+      // If the dictionary file name was provided, but the file does not exist, compute the dictionary and store it
       case x if x != "" => DictionaryIO.write(x, new Dictionary(config.vocabularySize).fit(documents))
+
+      // No dictionary file name was provided, compute the dictionary
       case _ => new Dictionary(config.vocabularySize).fit(documents)
+
     })
 
-    // Compute document vectors and zip them with identifiers that are longs
+    // Create an RDD of sparse document vectors
     val tfVectors = dictionary.value.transform(documents)
 
-    // Convert to sparse vectors in breeze format
-    val sparseInput = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector])
-    val breezeInput = sparseInput.map(v => new SparseVector[Double](v.indices, v.values, v.size))
+    // Convert the document vectors to breeze format
+    val input = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector]).
+                          map(v => new SparseVector[Double](v.indices, v.values, v.size))
 
-    // Construct LDA object
-    val lda = new DistributedLDA(features = dictionary.value.numFeatures)
-      .setTopics(config.topics)
-      .setGlobalIterations(config.globalIterations)
-      .setLocalIterations(config.localIterations)
+    // Construct distributed topic model
+    val lda = new DistributedTopicModel(features         = dictionary.value.numFeatures,
+                                        topics           = config.topics,
+                                        globalIterations = config.globalIterations,
+                                        localIterations  = config.localIterations)
 
-    // Fit LDA model to data
-    val model = lda.fit(breezeInput, dictionary.value)
+    // Fit the topic model to the data
+    val model = lda.fit(input, dictionary.value, initialModel)
 
-    // Print topics
+    // Print topics of the trained topic model and save the topic model to disk
     println("Final found topics")
     model.printTopics(dictionary.value, 25)
+    TopicModel.write(model, "models/final.model")
 
   }
 
