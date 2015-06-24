@@ -48,7 +48,7 @@ class TopicModel(val β: DenseMatrix[Double]) {
 }
 
 /**
- * Object with utility functions for topic models
+ * Utility functions for topic models
  */
 object TopicModel {
 

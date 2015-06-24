@@ -20,7 +20,7 @@ class DistributedTopicModel(private var features: Int,
                             private var localIterations: Int) extends Serializable {
 
   /**
-   * Fits given documents to a topic model model
+   * Fits given documents to a topic model
    *
    * @param documents The documents to fit
    */
@@ -34,7 +34,7 @@ class DistributedTopicModel(private var features: Int,
     for (t <- 1 to globalIterations) {
       println(s"Global iteration $t")
 
-      // Map each partition x to a local LDA Model
+      // Map each partition to a local LDA Model
       val models = documents.mapPartitions(partitionData => {
         val solver = new LDASolver(localIterations, partitionData.toArray, β)
         solver.solve()
@@ -51,7 +51,7 @@ class DistributedTopicModel(private var features: Int,
       // Normalize the model so the topic-word probabilities add up to 1 for each topic
       β = β_next(*, ::) :/ sum(β_next(::, *)).toDenseVector // Normalizes by columns (columns sum to 1)
 
-      // Print topic model and save it to disk
+      // Print topic model
       println(s"Topics after iteration $t")
       val topicModel = new TopicModel(β)
       topicModel.printTopics(dictionary, 10)
