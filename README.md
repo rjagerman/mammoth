@@ -20,14 +20,18 @@ Mammoth is a spark application and therefore needs to be executed by a spark clu
             The directory where the dataset is located
       --dictionary <value>
             The dictionary file (if it does not exist, a dictionary will be created there)
+      -i <value> | --Initial model <value>
+            The file containing the topic model to initialize with (leave empty to start from a random topic model)
+      -s <value> | --Seed <value>
+            The random seed to initialize the topic model with (ignored when an initial model is loaded, default: 42)
       -t <value> | --topics <value>
-            The number of topics (default: 30)
+            The number of topics (ignored when an initial model is loaded, default: 30)
+      -v <value> | --vocabulary <value>
+            The (maximum) size of the vocabulary (ignored when an initial model is loaded, default: 60000)
       -g <value> | --globalIterations <value>
             The number of global iterations (default: 20)
       -l <value> | --localIterations <value>
             The number of local iterations (default: 5)
-      -v <value> | --vocabulary <value>
-            The (maximum) size of the vocabulary (default: 60000)
       -p <value> | --partitions <value>
             The number of partitions to split the data in (default: 8192)
 
