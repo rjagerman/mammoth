@@ -22,6 +22,8 @@ Mammoth is a spark application and therefore needs to be executed by a spark clu
             The dictionary file (if it does not exist, a dictionary will be created there)
       -i <value> | --Initial model <value>
             The file containing the topic model to initialize with (leave empty to start from a random topic model)
+      -f <value> | --Final <value>
+            The file where the final topic model will be stored
       -s <value> | --Seed <value>
             The random seed to initialize the topic model with (ignored when an initial model is loaded, default: 42)
       -t <value> | --topics <value>
