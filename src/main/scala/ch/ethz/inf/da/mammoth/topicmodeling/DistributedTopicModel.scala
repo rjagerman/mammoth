@@ -1,8 +1,10 @@
 package ch.ethz.inf.da.mammoth.topicmodeling
 
 import breeze.linalg._
+import org.apache.spark.SparkContext
 import org.apache.spark.mllib.feature.DictionaryTF
 import org.apache.spark.rdd.RDD
+import ch.ethz.inf.da.mammoth.util.{intPairToLong, longToIntPair}
 
 import scala.reflect.ClassTag
 
@@ -13,16 +15,20 @@ import scala.reflect.ClassTag
  * @param features The number of features (i.e. dimensionality) of your input data
  * @param globalIterations The number of global iterations
  * @param localIterations The number of local iterations
+ * @param sc The spark context (used to broadcast the topic model for each iteration)
  */
 class DistributedTopicModel(private var features: Int,
                             private var topics: Int,
                             private var globalIterations: Int,
-                            private var localIterations: Int) extends Serializable {
+                            private var localIterations: Int,
+                            @transient val sc: SparkContext) extends Serializable {
 
   /**
    * Fits given documents to a topic model
    *
    * @param documents The documents to fit
+   * @param dictionary The dictionary (used to print out the topics for each iteration)
+   * @param initialModel The model to start with (typically random or loaded from file)
    */
   def fit(documents: RDD[SparseVector[Double]], dictionary: DictionaryTF, initialModel: TopicModel): TopicModel = {
 
@@ -34,18 +40,30 @@ class DistributedTopicModel(private var features: Int,
     for (t <- 1 to globalIterations) {
       println(s"Global iteration $t")
 
+      // Broadcast current topic model
+      val β_broadcasted = sc.broadcast(β)
+
       // Map each partition to a local LDA Model
       val models = documents.mapPartitions(partitionData => {
-        val solver = new LDASolver(localIterations, partitionData.toArray, β)
+        println("Obtaining β_broadcasted")
+        val β_local = β_broadcasted.value
+        println("Obtaining data")
+        val data = partitionData.toArray
+        println("Constructing LDA solver")
+        val solver = new LDASolver(localIterations, data, β_local)
+        println("Executing solve()")
         solver.solve()
-        β.activeIterator.map{ case ((x,y), v) => ((x.toLong << 32) + y.toLong, v) } // Convert (int,int) => long
+        println("Emitting matrix")
+        β_local.activeIterator.map{ case ((x, y), v) => (intPairToLong((x,y)), v) } // Convert (int, int) => long
       })
 
       // Reduce the LDA Models into a single LDA Model used for the next iteration
       // Here the topic-word probabilities for each local model are summed up
       val β_next = DenseMatrix.zeros[Double](features, topics)
-      models.reduceByKey(_ + _).collect.foreach {
-        case (coordinate, v) => β_next((coordinate >> 32).toInt, coordinate.toInt) = v // Convert long => (int,int)
+      models.reduceByKey(_ + _).collect.map {
+        case (c, v) => (longToIntPair(c), v) // convert long => (int, int)
+      }.foreach {
+        case ((x, y), v) => β_next(x, y) = v
       }
 
       // Normalize the model so the topic-word probabilities add up to 1 for each topic

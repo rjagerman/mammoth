@@ -18,12 +18,19 @@ class LDASolver(iterations:Int,
 
   /**
    * Sparse latent structure π
-   * Indexed by i,j,k:
+   * Indexed by i,k,j:
    *   i = Document index
-   *   j = Word index
    *   k = Topic index
+   *   j = Word index
    */
-  val π = scala.collection.mutable.HashMap[(Int, Int, Int), Double]()
+  val π = Array.fill[Array[scala.collection.mutable.HashMap[Int, Double]]](data.length) {
+    Array.fill[scala.collection.mutable.HashMap[Int, Double]](topics) {
+      new scala.collection.mutable.HashMap[Int, Double]()
+    }
+  }
+
+  // Better code would use tuples to index a single hash map, but this causes memory explosions due to boxing of tuples:
+  // val π = scala.collection.mutable.HashMap[(Int, Int, Int), Double]()
 
   /**
    * Document-topic distributions θ
@@ -54,13 +61,13 @@ class LDASolver(iterations:Int,
 
         // Compute π_{i,j,k} while keeping track of the sum over all k
         for (k <- 0 until topics) {
-          π((i, j, k)) = θ(i, k) * β(j, k)
-          sum += π((i, j, k))
+          π(i)(k)(j) = θ(i, k) * β(j, k)
+          sum += π(i)(k)(j)
         }
 
         // Normalize π_{i,j,k} by dividing it by the sum
         for (k <- 0 until topics) {
-          π((i, j, k)) /= sum
+          π(i)(k)(j) /= sum
         }
       }
     }
@@ -91,7 +98,7 @@ class LDASolver(iterations:Int,
 
         // Compute θ_{i,k}
         θ(i, k) = C_i * data(i).activeIterator.map {
-          case (j, value) => π((i,j,k)) * value
+          case (j, value) => π(i)(k)(j) * value
         }.sum
 
       }
@@ -110,7 +117,7 @@ class LDASolver(iterations:Int,
       // Compute 1.0 / C_k
       val C_k = 1.0 / data.indices.map { i =>
         data(i).activeIterator.map {
-          case (j, value) => π((i,j,k)) * value
+          case (j, value) => π(i)(k)(j) * value
         }.sum
       }.sum
 
@@ -118,7 +125,7 @@ class LDASolver(iterations:Int,
       β(::, k) := DenseVector.zeros[Double](features)
       data.indices.foreach {
         i => data(i).activeIterator.foreach {
-          case (j, value) => β(j, k) = β(j, k) + value * π.getOrElse((i,j,k), 0.0)
+          case (j, value) => β(j, k) = β(j, k) + value * π(i)(k).getOrElse(j, 0.0)
         }
       }
 

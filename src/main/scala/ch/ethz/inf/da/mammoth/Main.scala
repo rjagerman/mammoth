@@ -3,6 +3,7 @@ package ch.ethz.inf.da.mammoth
 import breeze.linalg.SparseVector
 import ch.ethz.inf.da.mammoth.io.{DatasetReader, DictionaryIO}
 import ch.ethz.inf.da.mammoth.topicmodeling.{TopicModel, DistributedTopicModel}
+import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.Dictionary
 
@@ -128,13 +129,15 @@ object Main {
 
     // Convert the document vectors to breeze format
     val input = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector]).
-                          map(v => new SparseVector[Double](v.indices, v.values, v.size))
+                          map(v => new SparseVector[Double](v.indices, v.values, v.size)).
+                          persist(StorageLevel.MEMORY_AND_DISK)
 
     // Construct distributed topic model
     val lda = new DistributedTopicModel(features         = dictionary.value.numFeatures,
                                         topics           = config.topics,
                                         globalIterations = config.globalIterations,
-                                        localIterations  = config.localIterations)
+                                        localIterations  = config.localIterations,
+                                        sc               = sc)
 
     // Fit the topic model to the data
     val model = lda.fit(input, dictionary.value, initialModel)
