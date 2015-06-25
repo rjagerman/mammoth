@@ -14,7 +14,7 @@ abstract class EMSolver(val iterations:Int) extends Serializable {
    */
   def solve(): Unit = {
     var t = 1
-    while(t < iterations && !converged()) {
+    while(t <= iterations && !converged()) {
       println(s"Local iteration $t")
       this.EStep()
       this.MStep()
