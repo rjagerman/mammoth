@@ -79,7 +79,7 @@ object TopicModel {
    * @return The topic model
    */
   def random(features: Int, topics: Int, seed: Int): TopicModel = {
-    var β = DenseMatrix.rand[Double](features, topics, new Uniform(0, 1)(new RandBasis(new MersenneTwister(seed))))
+    var β = DenseMatrix.rand[Double](features, topics, new Uniform(scala.Double.MinPositiveValue, 1)(new RandBasis(new MersenneTwister(seed))))
     β = β(*, ::) :/ sum(β(::, *)).toDenseVector
     new TopicModel(β)
   }
