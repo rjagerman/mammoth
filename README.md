@@ -44,3 +44,6 @@ Here is an example that uses 80000 vocabulary terms, 50 topics, 100 global itera
 If you want to tweak the amount of executor memory, driver memory or number of computing cores, you can pass these parameters to the `spark-submit` command. A long list of configurable spark parameters can be found [here](https://spark.apache.org/docs/latest/configuration.html). Following is the same example as above, but with the amount of memory and cores specified:
 
     spark-submit --master spark://master-url:7077 --executor-memory 100G --driver-memory 100G --total-executor-cores 368 Mammoth-assembly-0.1.jar -v 80000 -d "/path/to/dataset/*" -p 1000 -t 50 -g 100 -l 5 --dictionary "/path/to/dictionary.txt"
+
+## Troubleshooting
+Check out the [wiki](https://github.com/rjagerman/mammoth/wiki) for known issues with running this application on a computing cluster.
