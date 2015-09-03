@@ -40,11 +40,9 @@ class LDASolver(iterations:Int,
    *   k = Topic index
    */
   val θ = DenseMatrix.zeros[Double](data.length, topics)
-  (0 until topics).foreach (
-    k => data.indices.foreach (
-      i => θ(i,k) = data(i).dot(β(::, k))
-    )
-  )
+  for (k <- 0 until topics; i <- data.indices) {
+    θ(i, k) = data(i).dot(β(::, k))
+  }
 
   /**
    * Performs a single EStep.
