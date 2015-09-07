@@ -65,7 +65,9 @@ class LDASolver(iterations:Int,
 
         // Normalize π_{i,j,k} by dividing it by the sum
         for (k <- 0 until topics) {
-          π(i)(k)(j) /= sum
+          if (sum != 0) {
+            π(i)(k)(j) /= sum
+          }
         }
       }
     }
