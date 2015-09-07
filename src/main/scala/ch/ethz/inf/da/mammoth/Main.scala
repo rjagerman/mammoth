@@ -130,6 +130,7 @@ object Main {
     // Convert the document vectors to breeze format
     val input = tfVectors.map(v => v.asInstanceOf[org.apache.spark.mllib.linalg.SparseVector]).
                           map(v => new SparseVector[Double](v.indices, v.values, v.size)).
+                          repartition(config.partitions).
                           persist(StorageLevel.MEMORY_AND_DISK)
 
     // Construct distributed topic model
