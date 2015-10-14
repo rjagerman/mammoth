@@ -2,7 +2,8 @@ package ch.ethz.inf.da.mammoth
 
 import breeze.linalg.SparseVector
 import ch.ethz.inf.da.mammoth.io.{DatasetReader, DictionaryIO}
-import ch.ethz.inf.da.mammoth.topicmodeling.{TopicModel, DistributedTopicModel}
+import ch.ethz.inf.da.mammoth.topicmodeling.TopicModel
+import ch.ethz.inf.da.mammoth.topicmodeling.em.{TopicModel, DistributedEMSolver}
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.feature.Dictionary
@@ -134,7 +135,7 @@ object Main {
                           persist(StorageLevel.MEMORY_AND_DISK)
 
     // Construct distributed topic model
-    val lda = new DistributedTopicModel(features         = dictionary.value.numFeatures,
+    val lda = new DistributedEMSolver(features         = dictionary.value.numFeatures,
                                         topics           = config.topics,
                                         globalIterations = config.globalIterations,
                                         localIterations  = config.localIterations,

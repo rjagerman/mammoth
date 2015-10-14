@@ -1,4 +1,4 @@
-package ch.ethz.inf.da.mammoth.topicmodeling
+package ch.ethz.inf.da.mammoth.topicmodeling.em
 
 import java.io.File
 

@@ -1,12 +1,10 @@
-package ch.ethz.inf.da.mammoth.topicmodeling
+package ch.ethz.inf.da.mammoth.topicmodeling.em
 
 import breeze.linalg._
+import ch.ethz.inf.da.mammoth.util.{intPairToLong, longToIntPair}
 import org.apache.spark.SparkContext
 import org.apache.spark.mllib.feature.DictionaryTF
 import org.apache.spark.rdd.RDD
-import ch.ethz.inf.da.mammoth.util.{intPairToLong, longToIntPair}
-
-import scala.reflect.ClassTag
 
 /**
  * Distributed topic model
@@ -17,7 +15,7 @@ import scala.reflect.ClassTag
  * @param localIterations The number of local iterations
  * @param sc The spark context (used to broadcast the topic model for each iteration)
  */
-class DistributedTopicModel(private var features: Int,
+class DistributedEMSolver(private var features: Int,
                             private var topics: Int,
                             private var globalIterations: Int,
                             private var localIterations: Int,
