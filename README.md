@@ -1,5 +1,5 @@
 # Mammoth
-Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/). This project is a continuation of the [Web Scale Data Processing and Mining Project](https://github.com/lukaselmer/ethz-web-scale-data-mining-project/).
+Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/) and [Glint](https://github.com/rjagerman/glint). This project is a continuation of the [Web Scale Data Processing and Mining Project](https://github.com/lukaselmer/ethz-web-scale-data-mining-project/).
 
 ## Compiling
 To compile Mammoth you will need to use [sbt](http://www.scala-sbt.org/), which will take care of all dependencies. You can compile the application from the repository directory by running:
@@ -18,32 +18,44 @@ Mammoth is a spark application and therefore needs to be executed by a spark clu
     
       -d <value> | --dataset <value>
             The directory where the dataset is located
+      -r <value> | --rdd <value>
+            The (optional) RDD vector data file to load (if it does not exist, it will be created based on the dataset)
       --dictionary <value>
             The dictionary file (if it does not exist, a dictionary will be created there)
       -i <value> | --initial <value>
             The file containing the topic model to initialize with (leave empty to start from a random topic model)
       -f <value> | --final <value>
             The file where the final topic model will be stored
+      -c <value> | --glintConfig <value>
+            The glint configuration file
       -s <value> | --seed <value>
             The random seed to initialize the topic model with (ignored when an initial model is loaded, default: 42)
       -t <value> | --topics <value>
             The number of topics (ignored when an initial model is loaded, default: 30)
       -v <value> | --vocabulary <value>
             The (maximum) size of the vocabulary (ignored when an initial model is loaded, default: 60000)
+      -b <value> | --blocksize <value>
+            The size of a block of parameters to process at a time (default: 60000)
+      -α <value> | --alpha <value>
+            The (symmetric) α prior on the topic-document distribution (default: 0.5)
+      -β <value> | --beta <value>
+            The (symmetric) β prior on the topic-word distribution (default: 0.01)
+      -τ <value> | --tau <value>
+            The SSP delay bound (default: 1)
       -g <value> | --globalIterations <value>
             The number of global iterations (default: 20)
       -l <value> | --localIterations <value>
             The number of local iterations (default: 5)
       -p <value> | --partitions <value>
-            The number of partitions to split the data in (default: 8192)
+            The number of partitions to split the data in (default: 336)
 
-Here is an example that uses 80000 vocabulary terms, 50 topics, 100 global iterations, 5 local iterations and 1000 partitions: 
+Here is an example that uses 80000 vocabulary terms, 50 topics, 100 iterations and 1000 partitions: 
 
-    spark-submit --master spark://master-url:7077 Mammoth-assembly-0.1.jar -v 80000 -d "/path/to/dataset/*" -p 1000 -t 50 -g 100 -l 5 --dictionary "/path/to/dictionary.txt"
+    spark-submit --master spark://master-url:7077 Mammoth-assembly-0.1.jar -v 80000 -d "/path/to/dataset/*" -p 1000 -t 50 -i 100 --dictionary "/path/to/dictionary.txt" -c "/path/to/glint.conf"
     
 If you want to tweak the amount of executor memory, driver memory or number of computing cores, you can pass these parameters to the `spark-submit` command. A long list of configurable spark parameters can be found [here](https://spark.apache.org/docs/latest/configuration.html). Following is the same example as above, but with the amount of memory and cores specified:
 
-    spark-submit --master spark://master-url:7077 --executor-memory 100G --driver-memory 100G --total-executor-cores 368 Mammoth-assembly-0.1.jar -v 80000 -d "/path/to/dataset/*" -p 1000 -t 50 -g 100 -l 5 --dictionary "/path/to/dictionary.txt"
+    spark-submit --master spark://master-url:7077 --executor-memory 100G --driver-memory 100G --total-executor-cores 368 Mammoth-assembly-0.1.jar -v 80000 -d "/path/to/dataset/*" -p 1000 -t 50 -i 100 --dictionary "/path/to/dictionary.txt" -c "/path/to/glint.conf"
 
 ## Troubleshooting
 Check out the [wiki](https://github.com/rjagerman/mammoth/wiki) for known issues with running this application on a computing cluster.
