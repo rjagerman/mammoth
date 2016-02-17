@@ -8,9 +8,6 @@ import ch.ethz.inf.da.mammoth.document.TokenDocument
 import ch.ethz.inf.da.mammoth.io.{CluewebReader, DictionaryIO}
 import ch.ethz.inf.da.mammoth.lda.{LDAConfig, Solver}
 import ch.ethz.inf.da.mammoth.lda.mh.MHSolver
-import ch.ethz.inf.da.mammoth.topicmodeling.gibbs._
-import ch.ethz.inf.da.mammoth.topicmodeling.gibbs.metropolishastings.BCMHOptimizer
-import ch.ethz.inf.da.mammoth.topicmodeling.warp.WarpLDA
 import ch.ethz.inf.da.mammoth.util.fileExists
 import com.typesafe.config.ConfigFactory
 import glint.Client
@@ -29,7 +26,6 @@ import scala.concurrent.{Await, ExecutionContext}
 case class Config(
                    datasetLocation: String = "",
                    dictionaryLocation: String = "",
-                   initialModel: String = "",
                    finalModel: String = "",
                    rddLocation: String = "",
                    seed: Int = 42,
@@ -38,8 +34,7 @@ case class Config(
                    blockSize: Int = 1000,
                    α: Double = 0.5,
                    β: Double = 0.01,
-                   globalIterations: Int = 20,
-                   localIterations: Int = 5,
+                   iterations: Int = 100,
                    τ: Int = 1,
                    partitions: Int = 336,
                    glintConfig: File = new File("")
@@ -74,10 +69,6 @@ object Main {
         (x, c) => c.copy(dictionaryLocation = x)
       } text s"The dictionary file (if it does not exist, a dictionary will be created there)"
 
-      opt[String]('i', "initial") action {
-        (x, c) => c.copy(initialModel = x)
-      } text s"The file containing the topic model to initialize with (leave empty to start from a random topic model)"
-
       opt[String]('f', "final") action {
         (x, c) => c.copy(finalModel = x)
       } text s"The file where the final topic model will be stored"
@@ -100,7 +91,7 @@ object Main {
 
       opt[Int]('b', "blocksize") action {
         (x, c) => c.copy(blockSize = x)
-      } text s"The size of a block of parameters to process at a time (default: ${default.vocabularySize})"
+      } text s"The size of a block of parameters to process at a time (default: ${default.blockSize})"
 
       opt[Double]('α', "alpha") action {
         (x, c) => c.copy(α = x)
@@ -120,13 +111,9 @@ object Main {
         x => if (x >= 1) success else failure("τ must be larger than or equal to 1")
       } text s"The SSP delay bound (default: ${default.τ})"
 
-      opt[Int]('g', "globalIterations") action {
-        (x, c) => c.copy(globalIterations = x)
-      } text s"The number of global iterations (default: ${default.globalIterations})"
-
-      opt[Int]('l', "localIterations") action {
-        (x, c) => c.copy(localIterations = x)
-      } text s"The number of local iterations (default: ${default.localIterations})"
+      opt[Int]('i', "iterations") action {
+        (x, c) => c.copy(iterations = x)
+      } text s"The number of iterations (default: ${default.iterations})"
 
       opt[Int]('p', "partitions") action {
         (x, c) => c.copy(partitions = x)
@@ -159,7 +146,7 @@ object Main {
     // Create LDA configuration
     val ldaConfig = new LDAConfig()
     ldaConfig.blockSize = config.blockSize
-    ldaConfig.iterations = config.globalIterations
+    ldaConfig.iterations = config.iterations
     ldaConfig.partitions = config.partitions
     ldaConfig.seed = config.seed
     ldaConfig.α = config.α
