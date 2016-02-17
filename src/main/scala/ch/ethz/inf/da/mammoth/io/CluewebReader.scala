@@ -16,7 +16,7 @@ import scala.collection.JavaConversions
 /**
  * Helper object for reading the data set
  */
-object DatasetReader {
+object CluewebReader {
 
   /**
    * Gets the documents from given input

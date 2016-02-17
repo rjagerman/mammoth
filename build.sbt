@@ -2,14 +2,23 @@ name := "Mammoth"
 
 version := "0.1"
 
-scalaVersion := "2.10.5"
+scalaVersion := "2.10.6"
 
+
+// Glint
+
+libraryDependencies += "ch.ethz.inf.da" %% "glint" % "0.1-SNAPSHOT"
+
+
+// Spire (generic fast numerics)
+
+libraryDependencies += "org.spire-math" %% "spire" % "0.7.4"
 
 // Spark
 
-libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.4.0" % "provided"
+libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.5.1" % "provided"
 
-libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.4.0" % "provided"
+libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.5.1" % "provided"
 
 
 // Breeze native BLAS support
@@ -36,6 +45,11 @@ libraryDependencies += "SURFsara" % "warcutils" % "1.2"
 libraryDependencies += "commons-io" % "commons-io" % "2.4"
 
 
+// JSoup
+
+libraryDependencies += "org.jsoup" % "jsoup" % "1.8.3"
+
+
 // Boilerplate:
 
 libraryDependencies += "de.l3s.boilerpipe" % "boilerpipe" % "1.2.0"
@@ -47,12 +61,7 @@ libraryDependencies += "xerces" % "xercesImpl" % "2.11.0"
 
 // Scopt
 
-libraryDependencies += "com.github.scopt" %% "scopt" % "3.3.0"
-
-
-// Pickling
-
-libraryDependencies += "org.scala-lang.modules" %% "scala-pickling" % "0.10.0"
+libraryDependencies += "com.github.scopt" % "scopt_2.10" % "3.3.0"
 
 
 // Unit tests
@@ -63,6 +72,8 @@ libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.4" % "test"
 // Resolvers
 
 resolvers += "Akka Repository" at "http://repo.akka.io/releases/"
+
+resolvers += "spray repo" at "http://repo.spray.io"
 
 resolvers += "boilerpipe-m2-repo" at "http://boilerpipe.googlecode.com/svn/repo/"
 
