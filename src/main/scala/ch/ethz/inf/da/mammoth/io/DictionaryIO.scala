@@ -11,22 +11,24 @@ import org.apache.spark.mllib.feature.DictionaryTF
 object DictionaryIO {
 
   /**
-   * Reads a dictionary from given file
-   * @param file The file
-   * @param n The maximum size of the dictionary
-   * @return A DictionaryTF object
-   */
+    * Reads a dictionary from given file
+    *
+    * @param file The file
+    * @param n The maximum size of the dictionary
+    * @return A DictionaryTF object
+    */
   def read(file:String, n:Int = 10000000): DictionaryTF = {
     val mapping:Map[Any, Int] = scala.io.Source.fromFile(file).getLines().take(n).zipWithIndex.toMap
     new DictionaryTF(mapping, mapping.size)
   }
 
   /**
-   * Writes given dictionary to given file
-   * @param file The file
-   * @param dictionary The DictionaryTF object
-   * @return The DictionaryTF object
-   */
+    * Writes given dictionary to given file
+    *
+    * @param file The file
+    * @param dictionary The DictionaryTF object
+    * @return The DictionaryTF object
+    */
   def write(file:String, dictionary: DictionaryTF): DictionaryTF = {
     val items = dictionary.mapping.map(x => x.swap)
     val output = new FileOutputStream(file)

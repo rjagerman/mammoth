@@ -1,7 +1,10 @@
 package ch.ethz.inf.da.mammoth
 
 import com.github.aztek.porterstemmer.PorterStemmer
+import com.typesafe.scalalogging.slf4j.Logger
 import de.l3s.boilerpipe.extractors.ArticleExtractor
+import org.jsoup.Jsoup
+import org.slf4j.LoggerFactory
 
 /**
  * Preprocessing functions
@@ -69,6 +72,12 @@ package object preprocess {
    */
   val tokenizerRegex = """([a-zA-Z]\.){2,}|[a-zA-Z]+""".r
 
+  val tokenizer = """[^a-zA-Z]+""".r
+  val whitespace = """[ ]+""".r
+
+  @transient
+  protected lazy val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
+
   /**
    * Processes an input stream and extracts the plain text
    *
@@ -76,9 +85,10 @@ package object preprocess {
    * @return The plain text representation
    */
   def htmlToText(input: String): String = try {
-    ArticleExtractor.INSTANCE.getText(input)
+    //ArticleExtractor.INSTANCE.getText(input)
+    Jsoup.parse(input).body().text()
   } catch {
-    case e => ""
+    case e: Exception => ""
   }
 
   /**
@@ -87,7 +97,9 @@ package object preprocess {
    * @param input The input text
    * @return The tokens
    */
-  def tokenize(input: String): Iterator[String] = for (m <- tokenizerRegex findAllMatchIn input) yield m.toString
+  def tokenize(input: String): Iterator[String] = {
+    whitespace.replaceAllIn(tokenizer.replaceAllIn(input, " "), " ").split(" ").toIterator
+  }
 
   /**
    * Performs a basic pipeline of text preprocessing
@@ -101,7 +113,7 @@ package object preprocess {
       .filter(x ⇒ !stopWords.contains(x)) // Remove stop words
       .map(x ⇒ PorterStemmer.stem(x)) // Stem tokens
       .filter(x ⇒ x.length() >= 3) // Only allow words with a minimum of 3 characters
-      .filter(x ⇒ x.length() <= 30) // Only allow words with a maximum of 30 characters
+      .filter(x ⇒ x.length() <= 14) // Only allow words with a maximum of 14 characters
   }
 
 }
