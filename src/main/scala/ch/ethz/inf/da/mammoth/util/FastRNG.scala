@@ -14,7 +14,7 @@ class FastRNG(seed: Long) {
 
   // This is just (1.0 / Int.MAX_VALUE) - epsilon, which allows fast multiplication instead of slow division
   // for generating doubles in range [0, 1)
-  private val OneOverMaxValue: Double = 4.656612875245796e-10
+  private final val OneOverMaxValue: Double = 4.656612875245796e-10
 
   /**
     * Generates the next long value

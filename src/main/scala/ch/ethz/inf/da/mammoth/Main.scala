@@ -27,6 +27,7 @@ case class Config(
                    datasetLocation: String = "",
                    dictionaryLocation: String = "",
                    finalModel: String = "",
+                   checkpoint: String = "",
                    rddLocation: String = "",
                    seed: Int = 42,
                    var topics: Int = 30,
@@ -72,6 +73,10 @@ object Main {
       opt[String]('f', "final") action {
         (x, c) => c.copy(finalModel = x)
       } text s"The file where the final topic model will be stored"
+
+      opt[String]('w', "checkpoint") action {
+        (x, c) => c.copy(checkpoint = x)
+      } text s"The redundant file storage (e.g. HDFS) where checkpointed data will be stored"
 
       opt[File]('c', "glintConfig") action {
         (x, c) => c.copy(glintConfig = x)
@@ -151,14 +156,15 @@ object Main {
     ldaConfig.seed = config.seed
     ldaConfig.α = config.α
     ldaConfig.β = config.β
+    ldaConfig.τ = config.τ
     ldaConfig.topics = config.topics
     ldaConfig.vocabularyTerms = dictionary.numFeatures
 
     // Fit data
     println(s"Computing LDA model (V = ${dictionary.numFeatures}, T = ${config.topics}, " +
-      s"blocksize = ${config.blockSize} + τ = ${config.τ}, α = ${config.α}, β = ${config.β})")
+      s"blocksize = ${config.blockSize}, τ = ${config.τ}, α = ${config.α}, β = ${config.β})")
 
-    val topicModel = Solver.fit(gc, vectors, ldaConfig, (model, id) => new MHSolver(model, id))
+    val topicModel = Solver.fit(gc, vectors, ldaConfig, (model, sspClock, id) => new MHSolver(model, sspClock, id))
     //val topicModel = distributedGibbsSolver.fit(vectors, config.partitions)
 
     // Construct timeout and execution context for final operations

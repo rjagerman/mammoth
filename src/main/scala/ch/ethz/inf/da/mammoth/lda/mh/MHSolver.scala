@@ -3,11 +3,12 @@ package ch.ethz.inf.da.mammoth.lda.mh
 import java.util.concurrent.Semaphore
 
 import ch.ethz.inf.da.mammoth.lda._
-import ch.ethz.inf.da.mammoth.util.{PipelinedFutureIterator, FastRNG, time, shuffledRange}
+import ch.ethz.inf.da.mammoth.util._
 import glint.models.client.buffered.BufferedBigMatrix
 import glint.models.client.granular.GranularBigMatrix
 
 import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
 
 /**
   * A block-coordinate metropolis-hastings based solver
@@ -15,18 +16,26 @@ import scala.concurrent.{Await, Future}
   * @param model The LDA model
   * @param id The identifier
   */
-class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
+class MHSolver(model: LDAModel, sspClock: SSPClock, id: Int) extends Solver(model, sspClock, id) {
 
   val random = new FastRNG(model.config.seed + id)
   val granularWordTopicCounts = new GranularBigMatrix[Long](model.wordTopicCounts, model.config.topics, 10000)
   val mhSteps = 2
+  val flushLock = new SimpleLock(32)
 
   /**
     * Runs the LDA inference algorithm on given partition of the data
     *
     * @param samples The samples to run the algorithm on
+    * @param evaluation The evaluation reference to add measurements to
+    * @param iteration The iteration number
     */
-  override protected def fit(samples: Array[GibbsSample], evaluation: Evaluation, iteration: Int): Unit = {
+  override protected def fit(samples: Array[GibbsSample],
+                             evaluation: Evaluation,
+                             iteration: Int): Unit = {
+
+    // Wait for previous iterations to finish globally (stale-synchronous protocol with bound τ)
+    //sspClock.block(iteration - model.config.τ)
 
     // Get global counts
     val global = Await.result(model.topicCounts.pull((0L until model.config.topics).toArray), timeout.duration)
@@ -42,16 +51,19 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
     val pipeline = new PipelinedFutureIterator(pullNext, blocks)
     pipeline.foreach { case futureCoordinateBlock =>
 
+      // Log failures
+      futureCoordinateBlock.onFailure { case ex => logger.error(ex.getMessage + "\n" + ex.getStackTraceString) }
+
       // Due to pipelining, the following Await call should be very quick for the majority of pulls since it's pulled
       // ahead of time during the previous iteration
       val coordinateBlock = time(logger, "Wait time: ") {
-        Await.result(futureCoordinateBlock, timeout.duration)
+        Await.result(futureCoordinateBlock, (timeout.duration.toMillis * 4) milliseconds)
       }
 
       // Compute word-likelihood
-      time(logger, "Word loglikelihood time: ") {
+      /*time(logger, "Word loglikelihood time: ") {
         evaluation.addLocalWordLikelihood(iteration, coordinateBlock.wordTopicCounts)
-      }
+      }*/
 
       // Compute alias tables
       val aliasTables = time(logger, "Alias time: ") {
@@ -66,7 +78,10 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
 
     // Compute doc-likelihood
     evaluation.addLocalDocLikelihood(iteration, samples)
-    evaluation.finish(iteration, global)
+
+    // Finish and count this iteration as done
+    evaluation.finish(iteration)
+    //sspClock.tick(id)
 
   }
 
@@ -77,14 +92,23 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
     * @return An array with corresponding alias tables
     */
   private def computeAliasTables(coordinateBlock: CoordinateBlock): Array[AliasTable] = {
-    val aliasStart = System.currentTimeMillis()
     val aliasTables = new Array[AliasTable](coordinateBlock.wordTopicCounts.length)
     var i = 0
+    var sparsity: Double = 0.0
     while (i < coordinateBlock.wordTopicCounts.length) {
+      var c = 0
+      var d = 0
+      while (c < coordinateBlock.wordTopicCounts(i).length) {
+        if (coordinateBlock.wordTopicCounts(i)(c) == 0) {
+          d += 1
+        }
+        c += 1
+      }
+      sparsity += d.toDouble / c.toDouble
       aliasTables(i) = new AliasTable(coordinateBlock.wordTopicCounts(i).map(x => x.toDouble + model.config.β))
       i += 1
     }
-    logger.info(s"Alias tables: ${System.currentTimeMillis() - aliasStart}ms")
+    logger.info(s"Avg alias sparsity: ${sparsity / coordinateBlock.wordTopicCounts.length.toDouble}")
     aliasTables
   }
 
@@ -103,9 +127,9 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
     val sampler = new Sampler(model.config, mhSteps, random)
     sampler.globalCounts = global
     val globalDifference = new Array[Long](global.length)
-    val buffer = new BufferedBigMatrix[Long](granularWordTopicCounts, 100000)
-    val concurrentFlushes = 16
-    val flushLock = new Semaphore(concurrentFlushes)
+    val bufferSize = 100000
+    val buffer = new BufferedBigMatrix[Long](granularWordTopicCounts, bufferSize)
+    flushLock.waitTime = 0L
 
     // Iterate over samples
     var i = 0
@@ -138,12 +162,15 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
             global(newTopic) += 1
             globalDifference(oldTopic) -= 1
             globalDifference(newTopic) += 1
+            if (buffer.size >= bufferSize - 4) {
+              flushLock.acquire()
+              val flush = buffer.flush()
+              flush.onComplete(_ => flushLock.release())
+              flush.onFailure { case ex => logger.error(ex.getMessage + "\n" + ex.getStackTraceString) }
+            }
             buffer.pushToBuffer(feature, oldTopic, -1)
             buffer.pushToBuffer(feature, newTopic, 1)
-            if (buffer.isFull) {
-              flushLock.acquire()
-              buffer.flush().onComplete(_ => flushLock.release())
-            }
+
           }
         }
 
@@ -155,12 +182,13 @@ class MHSolver(model: LDAModel, id: Int) extends Solver(model, id) {
 
     // Flush final changes to parameter server
     flushLock.acquire()
-    buffer.flush().onComplete(_ => flushLock.release())
+    val flush = buffer.flush()
+    flush.onComplete(_ => flushLock.release())
+    flush.onFailure { case ex => logger.error(ex.getMessage + "\n" + ex.getStackTraceString) }
     model.topicCounts.push((0L until model.config.topics).toArray, globalDifference)
 
-    // Wait for everything to propagate to the parameter servers
-    flushLock.acquire(concurrentFlushes)
-    flushLock.release(concurrentFlushes)
+    // Log time spend waiting for the flush lock
+    logger.info(s"Flush lock time: ${flushLock.waitTime}ms")
 
   }
 

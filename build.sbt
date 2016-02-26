@@ -28,6 +28,13 @@ libraryDependencies += "org.scalanlp" %% "breeze" % "0.11.2"
 libraryDependencies += "org.scalanlp" %% "breeze-natives" % "0.11.2"
 
 
+// Retry
+
+resolvers += "softprops-maven" at "http://dl.bintray.com/content/softprops/maven"
+
+libraryDependencies += "me.lessis" %% "retry" % "0.2.0"
+
+
 // WARC file parser
 
 libraryDependencies += "org.jwat" % "jwat-warc" % "1.0.1"

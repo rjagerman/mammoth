@@ -14,6 +14,7 @@ package ch.ethz.inf.da.mammoth.lda
   */
 case class LDAConfig(var α: Double = 0.5,
                      var β: Double = 0.01,
+                     var τ: Int = 1,
                      var iterations: Int = 100,
                      var topics: Int = 10,
                      var vocabularyTerms: Int = 100000,

@@ -4,8 +4,7 @@ import java.util.concurrent.Semaphore
 
 import akka.util.Timeout
 import breeze.linalg.SparseVector
-import ch.ethz.inf.da.mammoth.util.FastRNG
-import ch.ethz.inf.da.mammoth.util.RDDImprovements
+import ch.ethz.inf.da.mammoth.util.{SSPClock, FastRNG, RDDImprovements}
 import com.typesafe.scalalogging.slf4j.Logger
 import glint.Client
 import glint.models.client.buffered.BufferedBigMatrix
@@ -20,13 +19,14 @@ import scala.concurrent.duration._
   * A solver that can compute an LDA model based on data
   *
   * @param model The LDA model
+  * @param sspClock The stale-synchronous protocol clock
   * @param id The identifier
   */
-abstract class Solver(model: LDAModel, id: Int) {
+abstract class Solver(model: LDAModel, sspClock: SSPClock, id: Int) {
 
   // Construct execution context, timeout and logger
   implicit protected val ec = ExecutionContext.Implicits.global
-  implicit protected val timeout = new Timeout(300 seconds)
+  implicit protected val timeout = new Timeout(180 seconds)
   protected val logger: Logger = Logger(LoggerFactory getLogger s"${getClass.getSimpleName}-$id")
 
   /**
@@ -37,7 +37,7 @@ abstract class Solver(model: LDAModel, id: Int) {
   private def initialize(samples: Array[GibbsSample]): Unit = {
 
     // Initialize buffered matrix for word topic counts
-    val buffer = new BufferedBigMatrix[Long](model.wordTopicCounts, 10000)
+    val buffer = new BufferedBigMatrix[Long](model.wordTopicCounts, 20000)
     val topics = new Array[Long](model.config.topics)
     val pushLock = new Semaphore(256)
 
@@ -49,12 +49,12 @@ abstract class Solver(model: LDAModel, id: Int) {
       var j = 0
       while (j < sample.features.length) {
 
-        buffer.pushToBuffer(sample.features(j), sample.topics(j), 1)
-        topics(sample.topics(j)) += 1
         if (buffer.isFull) {
           pushLock.acquire()
           buffer.flush().onComplete(_ => pushLock.release())
         }
+        buffer.pushToBuffer(sample.features(j), sample.topics(j), 1)
+        topics(sample.topics(j)) += 1
 
         j += 1
       }
@@ -63,9 +63,12 @@ abstract class Solver(model: LDAModel, id: Int) {
     }
 
     // Perform final flush and await results to guarantee everything has been processed on the parameter servers
-    Await.result(buffer.flush(), timeout.duration.toMillis milliseconds)
-    Await.result(model.topicCounts.push((0L until model.config.topics).toArray, topics),
-      timeout.duration.toMillis milliseconds)
+    pushLock.acquire(2)
+    buffer.flush().onComplete(_ => pushLock.release())
+    model.topicCounts.push((0L until model.config.topics).toArray, topics).onComplete(_ => pushLock.release())
+    pushLock.acquire(256)
+    pushLock.release(256)
+
   }
 
   /**
@@ -75,6 +78,11 @@ abstract class Solver(model: LDAModel, id: Int) {
     * @param evaluation The evaluation reference to add measurements to
     */
   private def fit(samples: Array[GibbsSample], evaluation: Evaluation): Unit = {
+
+    // Sleep to spread out the start of the routines (to prevent flooding the parameter servers at the start)
+    Thread.sleep(id * 100)
+
+    // Perform iterations
     var t = 0
     while (t < model.config.iterations) {
       t += 1
@@ -110,29 +118,37 @@ object Solver {
   def fit(gc: Client,
           samples: RDD[SparseVector[Int]],
           config: LDAConfig,
-          solver: (LDAModel, Int) => Solver): LDAModel = {
+          solver: (LDAModel, SSPClock, Int) => Solver): LDAModel = {
 
     // Transform data to gibbs samples
     val gibbsSamples = transform(samples, config)
 
+    // Execution context and timeouts for asynchronous operations
+    implicit val ec = ExecutionContext.Implicits.global
+    implicit val timeout = new Timeout(120 seconds)
+
+    // SSP Clock
+    //val sspClock = SSPClock(gc, config.partitions)
+
     // Construct LDA model and initialize it on the parameter server
-    val model = LDAModel(gc, config)
+    val model = LDAModel(gc, config, new CyclicalFeatureMap(config.vocabularyTerms, config.partitions))
     gibbsSamples.foreachPartitionWithIndex { case (id, it) =>
-      val s = solver(model, id)
+      val s = solver(model, null, id)
       s.initialize(it.toArray)
     }
 
     // Construct evaluation
-    implicit val ec = ExecutionContext.Implicits.global
-    implicit val timeout = new Timeout(60 seconds)
-    val evaluation = Evaluation(gc, config)
-    evaluation.asyncPrintLoop(60 seconds) // Check state every 60 seconds and print perplexity when possible
+    val evaluation = Evaluation(gc, model)
+    val evaluationFuture = evaluation.asyncPrintLoop(60 seconds) // Check state every 60 seconds and print perplexity
 
     // Perform training
     gibbsSamples.foreachPartitionWithIndex { case (id, it) =>
-      val s = solver(model, id)
+      val s = solver(model, null, id)
       s.fit(it.toArray, evaluation)
     }
+
+    // Wait for evaluation print loop to finish
+    Await.result(evaluationFuture, (15 * 60) seconds)
 
     // Return trained model
     model
@@ -150,7 +166,8 @@ object Solver {
     // Map partitions to Gibbs samples that have a random initialization
     val gibbsSamples = samples.mapPartitionsWithIndex { case (id, it) =>
       val random = new FastRNG(config.seed + id)
-      it.map(s => GibbsSample(s, random, config.topics))
+      val cyclicalFeatureMap = new CyclicalFeatureMap(config.vocabularyTerms, config.partitions)
+      it.map(s => GibbsSample(s, random, config.topics, cyclicalFeatureMap))
     }.repartition(config.partitions).persist(StorageLevel.MEMORY_AND_DISK)
 
     // Trigger empty action to materialize the mapping and persist it

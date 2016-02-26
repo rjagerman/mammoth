@@ -4,6 +4,7 @@ import akka.util.Timeout
 import breeze.linalg.Vector
 import ch.ethz.inf.da.mammoth.util.timeSince
 import com.typesafe.scalalogging.slf4j.Logger
+import glint.models.client.granular.GranularBigMatrix
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -39,6 +40,22 @@ object CoordinateBlock {
     * @param block The block
     * @param blocks The total number of blocks
     * @param model The LDA model with references to the parameter server
+    * @return A future containing the coordinate block
+    */
+  def apply(block: Int,
+            blocks: Int,
+            model: LDAModel)(implicit ec: ExecutionContext, timeout: Timeout): Future[CoordinateBlock] = {
+    val granularModel = new GranularBigMatrix[Long](model.wordTopicCounts, model.config.topics, 10000)
+    val pull = granularModel.pull(coordinates(block, blocks, model.config.vocabularyTerms))
+    pull.map(wordTopicCounts => new CoordinateBlock(block, blocks, model, wordTopicCounts))
+  }
+
+  /**
+    * Pulls a block of coordinates from the parameter server
+    *
+    * @param block The block
+    * @param blocks The total number of blocks
+    * @param model The LDA model with references to the parameter server
     * @param logger The logger to write timing information to
     * @return A future containing the coordinate block
     */
@@ -47,9 +64,9 @@ object CoordinateBlock {
             model: LDAModel,
             logger: Logger)(implicit ec: ExecutionContext, timeout: Timeout): Future[CoordinateBlock] = {
     val start = System.currentTimeMillis()
-    val pull = model.wordTopicCounts.pull(coordinates(block, blocks, model.config.vocabularyTerms))
+    val pull = apply(block, blocks, model)
     pull.onComplete(_ => timeSince(start, logger, s"Coordinate block $block pull: "))
-    pull.map(wordTopicCounts => new CoordinateBlock(block, blocks, model, wordTopicCounts))
+    pull
   }
 
   /**

@@ -3,6 +3,7 @@ package ch.ethz.inf.da.mammoth.lda
 import akka.util.Timeout
 import ch.ethz.inf.da.mammoth.util._
 import glint.Client
+import glint.models.client.retry.{RetryBigVector, RetryBigMatrix}
 import glint.models.client.{BigVector, BigMatrix}
 import org.apache.spark.mllib.feature.DictionaryTF
 
@@ -18,7 +19,8 @@ import scala.concurrent.duration._
   */
 class LDAModel(var wordTopicCounts: BigMatrix[Long],
                var topicCounts: BigVector[Long],
-               val config: LDAConfig) extends Serializable {
+               val config: LDAConfig,
+               cyclicalFeatureMap: CyclicalFeatureMap) extends Serializable {
 
   /**
     * Prints out the top words of the topic model for each topic
@@ -52,7 +54,8 @@ class LDAModel(var wordTopicCounts: BigMatrix[Long],
     val globalCounts = Await.result(topicCounts.pull((0L until config.topics).toArray), timeout.duration)
     ranges(0, config.vocabularyTerms, 1000).foreach { case range =>
       val rangeArray = range.toArray
-      val rows = Await.result(wordTopicCounts.pull(rangeArray), timeout.duration)
+      val mappedRangeArray = range.map(x => cyclicalFeatureMap.map(x.toInt).toLong).toArray
+      val rows = Await.result(wordTopicCounts.pull(mappedRangeArray), timeout.duration)
       rangeArray.zip(rows).foreach {
         case (feature, row) =>
           for (t <- 0 until config.topics) {
@@ -76,10 +79,10 @@ object LDAModel {
     *
     * @param config The LDA configuration
     */
-  def apply(gc: Client, config: LDAConfig): LDAModel = {
-    val topicWordCounts = gc.matrix[Long](config.vocabularyTerms, config.topics, 4)
-    val globalCounts = gc.vector[Long](config.topics, 4)
-    new LDAModel(topicWordCounts, globalCounts, config)
+  def apply(gc: Client, config: LDAConfig, cyclicalFeatureMap: CyclicalFeatureMap): LDAModel = {
+    val topicWordCounts = new RetryBigMatrix[Long](gc.matrix[Long](config.vocabularyTerms, config.topics, 2))
+    val globalCounts = new RetryBigVector[Long](gc.vector[Long](config.topics, 1))
+    new LDAModel(topicWordCounts, globalCounts, config, cyclicalFeatureMap)
   }
 
 }

@@ -54,14 +54,14 @@ object GibbsSample {
     * @param topics The number of topics
     * @return An initialized Gibbs sample with random (uniform) topic assignments
     */
-  def apply(sv: SparseVector[Int], random: FastRNG, topics: Int): GibbsSample = {
+  def apply(sv: SparseVector[Int], random: FastRNG, topics: Int, cyclicalFeatureMap: CyclicalFeatureMap): GibbsSample = {
     var current = 0
     val sample = new GibbsSample(new Array[Int](sum(sv)), new Array[Int](sum(sv)))
     sv.activeIterator.foreach {
       case (index, value) =>
         var i = 0
         while (i < value) {
-          sample.features(current) = index
+          sample.features(current) = cyclicalFeatureMap.map(index).toInt
           sample.topics(current) = random.nextPositiveInt() % topics
           current += 1
           i += 1
