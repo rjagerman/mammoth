@@ -24,14 +24,19 @@ class Dictionary(numFeatures: Int) {
    */
   def fit[D <: Iterable[_]](dataset: RDD[D]) = {
 
-    val map = dataset.flatMap(doc => doc)
-      .map(word ⇒ (word, 1))         // Map each individual word to the count 1
+    val dictionaryData = dataset.flatMap(doc => doc)
+      .map(word ⇒ (word, 1L))         // Map each individual word to the count 1
       .reduceByKey(_ + _)            // Reduce by summing the word counts
       .map(item ⇒ item.swap)         // Swap (word,count) to (count,word)
       .sortByKey(false, 1)           // Sort by key (the counts)
       .map(item ⇒ item.swap)         // Swap (count,word) back to (word,count)
       .take(numFeatures)             // Only take the top n words
-      .map(_._1).zipWithIndex.toMap  // Convert to a map with indices
+
+    dictionaryData.foreach { case (word, count) =>
+      println(s"${word}, ${count}")
+    }
+
+    val map = dictionaryData.map(_._1).zipWithIndex.toMap  // Convert to a map with indices
 
     new DictionaryTF(map, numFeatures)
   }

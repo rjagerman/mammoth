@@ -1,13 +1,15 @@
 package ch.ethz.inf.da.mammoth.util
 
-import java.util.concurrent.Semaphore
+import java.util.concurrent.{TimeUnit, Semaphore}
+
+import com.typesafe.scalalogging.slf4j.Logger
 
 /**
   * A simple lock for a limited multiple simultaneous accesses (e.g. a Semaphore)
   *
   * @param accesses Number of simultaneous accesses that are allowed
   */
-class SimpleLock(val accesses: Int) {
+class SimpleLock(val accesses: Int, var logger: Logger = null) {
 
   val semaphore = new Semaphore(accesses)
   var waitTime: Long = 0
@@ -18,7 +20,11 @@ class SimpleLock(val accesses: Int) {
   @inline
   def acquire(): Unit = {
     val start = System.currentTimeMillis()
-    semaphore.acquire()
+    while(!semaphore.tryAcquire(10, TimeUnit.SECONDS)) {
+      if (logger != null) {
+        logger.info(s"Failed to acquire lock, retrying...")
+      }
+    }
     waitTime += System.currentTimeMillis() - start
   }
 
@@ -37,7 +43,11 @@ class SimpleLock(val accesses: Int) {
   @inline
   def acquire(accesses: Int): Unit = {
     val start = System.currentTimeMillis()
-    semaphore.acquire(accesses)
+    while(!semaphore.tryAcquire(accesses, 10, TimeUnit.SECONDS)) {
+      if (logger != null) {
+        logger.info(s"Failed to acquire lock, retrying...")
+      }
+    }
     waitTime += System.currentTimeMillis() - start
   }
 
@@ -56,7 +66,11 @@ class SimpleLock(val accesses: Int) {
   @inline
   def acquireAll(): Unit = {
     val start = System.currentTimeMillis()
-    semaphore.acquire(accesses)
+    while(!semaphore.tryAcquire(accesses, 10, TimeUnit.SECONDS)) {
+      if (logger != null) {
+        logger.info(s"Failed to acquire lock, retrying...")
+      }
+    }
     waitTime += System.currentTimeMillis() - start
   }
 

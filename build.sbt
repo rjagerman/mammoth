@@ -10,6 +10,11 @@ scalaVersion := "2.10.6"
 libraryDependencies += "ch.ethz.inf.da" %% "glint" % "0.1-SNAPSHOT"
 
 
+// Glint LDA
+
+libraryDependencies += "ch.ethz.inf.da" %% "glintlda" % "0.1-SNAPSHOT"
+
+
 // Spire (generic fast numerics)
 
 libraryDependencies += "org.spire-math" %% "spire" % "0.7.4"

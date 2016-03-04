@@ -6,13 +6,14 @@ import akka.util.Timeout
 import breeze.linalg.SparseVector
 import ch.ethz.inf.da.mammoth.document.TokenDocument
 import ch.ethz.inf.da.mammoth.io.{CluewebReader, DictionaryIO}
-import ch.ethz.inf.da.mammoth.lda.{LDAConfig, Solver}
-import ch.ethz.inf.da.mammoth.lda.mh.MHSolver
+import glintlda.{LDAConfig, Solver}
 import ch.ethz.inf.da.mammoth.util.fileExists
 import com.typesafe.config.ConfigFactory
 import glint.Client
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.feature.{Dictionary, DictionaryTF}
+import org.apache.spark.mllib.clustering.LDA
+import org.apache.spark.mllib.linalg
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
@@ -24,22 +25,24 @@ import scala.concurrent.{Await, ExecutionContext}
   * Defines the command line options
   */
 case class Config(
+                   algorithm: String = "mh",
+                   blockSize: Int = 1000,
+                   glintConfig: File = new File(""),
                    datasetLocation: String = "",
                    dictionaryLocation: String = "",
                    finalModel: String = "",
-                   checkpoint: String = "",
+                   iterations: Int = 100,
+                   mhSteps: Int = 2,
+                   partitions: Int = 336,
                    rddLocation: String = "",
                    seed: Int = 42,
                    var topics: Int = 30,
                    var vocabularySize: Int = 60000,
-                   blockSize: Int = 1000,
+                   warmStart: String = "",
                    α: Double = 0.5,
                    β: Double = 0.01,
-                   iterations: Int = 100,
-                   τ: Int = 1,
-                   partitions: Int = 336,
-                   glintConfig: File = new File("")
-                 )
+                   τ: Int = 1
+                  )
 
 /**
   * Main application
@@ -58,13 +61,28 @@ object Main {
     val parser = new scopt.OptionParser[Config]("") {
       head("Mammoth", "0.1")
 
+      opt[String]('a', "algorithm") action {
+        (x, c) => c.copy(algorithm = x)
+      } validate {
+        case x: String =>
+          if (Set("spark", "mh", "naive").contains(x)) {
+            success
+          } else {
+            failure("algorithm must be either spark, mh or naive")
+          }
+      } text s"The algorithm to use (either spark, mh or naive)"
+
+      opt[Int]('b', "blocksize") action {
+        (x, c) => c.copy(blockSize = x)
+      } text s"The size of a block of parameters to process at a time (default: ${default.blockSize})"
+
+      opt[File]('c', "glintconfig") action {
+        (x, c) => c.copy(glintConfig = x)
+      } text s"The glint configuration file"
+
       opt[String]('d', "dataset") required() action {
         (x, c) => c.copy(datasetLocation = x)
       } text "The directory where the dataset is located"
-
-      opt[String]('r', "rdd") action {
-        (x, c) => c.copy(rddLocation = x)
-      } text s"The (optional) RDD vector data file to load (if it does not exist, it will be created based on the dataset)"
 
       opt[String]("dictionary") action {
         (x, c) => c.copy(dictionaryLocation = x)
@@ -74,13 +92,23 @@ object Main {
         (x, c) => c.copy(finalModel = x)
       } text s"The file where the final topic model will be stored"
 
-      opt[String]('w', "checkpoint") action {
-        (x, c) => c.copy(checkpoint = x)
-      } text s"The redundant file storage (e.g. HDFS) where checkpointed data will be stored"
+      opt[Int]('i', "iterations") action {
+        (x, c) => c.copy(iterations = x)
+      } text s"The number of iterations (default: ${default.iterations})"
 
-      opt[File]('c', "glintConfig") action {
-        (x, c) => c.copy(glintConfig = x)
-      } text s"The glint configuration file"
+      opt[Int]('m', "metropolishastings") action {
+        (x, c) => c.copy(mhSteps = x)
+      }  validate {
+        case x => if (x > 0) success else failure("Number of metropolis-hastings steps must be larger than 0")
+      } text s"The number of metropolis-hastings steps (default: ${default.mhSteps})"
+
+      opt[Int]('p', "partitions") action {
+        (x, c) => c.copy(partitions = x)
+      } text s"The number of partitions to split the data in (default: ${default.partitions})"
+
+      opt[String]('r', "rdd") action {
+        (x, c) => c.copy(rddLocation = x)
+      } text s"The (optional) RDD vector data file to load (if it does not exist, it will be created based on the dataset)"
 
       opt[Int]('s', "seed") action {
         (x, c) => c.copy(seed = x)
@@ -94,9 +122,9 @@ object Main {
         (x, c) => c.copy(vocabularySize = x)
       } text s"The (maximum) size of the vocabulary (ignored when an initial model is loaded, default: ${default.vocabularySize})"
 
-      opt[Int]('b', "blocksize") action {
-        (x, c) => c.copy(blockSize = x)
-      } text s"The size of a block of parameters to process at a time (default: ${default.blockSize})"
+      opt[String]('w', "warmstart") action {
+        (x, c) => c.copy(warmStart = x)
+      } text s"The location where checkpointed data will be stored and read from as a warmstart mechanic"
 
       opt[Double]('α', "alpha") action {
         (x, c) => c.copy(α = x)
@@ -115,14 +143,6 @@ object Main {
       } validate {
         x => if (x >= 1) success else failure("τ must be larger than or equal to 1")
       } text s"The SSP delay bound (default: ${default.τ})"
-
-      opt[Int]('i', "iterations") action {
-        (x, c) => c.copy(iterations = x)
-      } text s"The number of iterations (default: ${default.iterations})"
-
-      opt[Int]('p', "partitions") action {
-        (x, c) => c.copy(partitions = x)
-      } text s"The number of partitions to split the data in (default: ${default.partitions})"
 
     }
 
@@ -144,46 +164,117 @@ object Main {
     // Read dictionary and dataset depending on configuration
     val (dictionary: DictionaryTF, vectors: RDD[SparseVector[Int]]) = readDictionaryAndDataset(sc, config)
 
-    // Create solver
-    //val lda = new LDA(config.α, config.β, config.globalIterations, config.topics, config.vocabularySize, config.seed)
-    //val distributedGibbsSolver = new DistributedGibbsSolver(gc, lda, BCMHOptimizer(config.blockSize, 4))
-
-    // Create LDA configuration
-    val ldaConfig = new LDAConfig()
-    ldaConfig.blockSize = config.blockSize
-    ldaConfig.iterations = config.iterations
-    ldaConfig.partitions = config.partitions
-    ldaConfig.seed = config.seed
-    ldaConfig.α = config.α
-    ldaConfig.β = config.β
-    ldaConfig.τ = config.τ
-    ldaConfig.topics = config.topics
-    ldaConfig.vocabularyTerms = dictionary.numFeatures
-
-    // Fit data
-    println(s"Computing LDA model (V = ${dictionary.numFeatures}, T = ${config.topics}, " +
-      s"blocksize = ${config.blockSize}, τ = ${config.τ}, α = ${config.α}, β = ${config.β})")
-
-    val topicModel = Solver.fit(gc, vectors, ldaConfig, (model, sspClock, id) => new MHSolver(model, sspClock, id))
-    //val topicModel = distributedGibbsSolver.fit(vectors, config.partitions)
-
-    // Construct timeout and execution context for final operations
-    implicit val timeout = new Timeout(120 seconds)
-    implicit val ec = ExecutionContext.Implicits.global
-
-    // Print top topics
-    topicModel.describe(15, dictionary)
-
-    // Perform cleanup
-    Await.result(topicModel.wordTopicCounts.destroy(), 60 seconds)
-    Await.result(topicModel.topicCounts.destroy(), 60 seconds)
-
-    /*val wlda = new WarpLDA(gc, config.seed, config.topics, config.vocabularySize, 2, config.α, config.β)
-    wlda.fit(vectors)*/
+    config.algorithm match {
+      case "mh" => solve(config, dictionary, vectors, sc, gc, "mh")
+      case "naive" => solve(config, dictionary, vectors, sc, gc, "naive")
+      case "spark" => solveSpark(config, dictionary, vectors, sc, gc)
+    }
 
     // Stop glint & spark
     gc.stop()
     sc.stop()
+
+  }
+
+  /**
+    * Solves using Mammoth algorithm
+    *
+    * @param config The LDA configuration
+    * @param dictionary The dictionary
+    * @param vectors The data set as an RDD of sparse vectors
+    * @param sc The spark context
+    * @param gc The glint client
+    * @param solver The solver to use
+    */
+  def solve(config: Config,
+            dictionary: DictionaryTF,
+            vectors: RDD[SparseVector[Int]],
+            sc: SparkContext,
+            gc: Client,
+            solver: String): Unit = {
+
+    // Create LDA configuration
+    val ldaConfig = new LDAConfig()
+    ldaConfig.setBlockSize(config.blockSize)
+    ldaConfig.setIterations(config.iterations)
+    ldaConfig.setMhSteps(config.mhSteps)
+    ldaConfig.setPartitions(config.partitions)
+    ldaConfig.setSeed(config.seed)
+    ldaConfig.setTopics(config.topics)
+    ldaConfig.setVocabularyTerms(dictionary.numFeatures)
+    ldaConfig.setα(config.α)
+    ldaConfig.setβ(config.β)
+    ldaConfig.setτ(config.τ)
+
+    // Print LDA config
+    println(s"Computing LDA model")
+    println(ldaConfig)
+
+    // Fit data to topic model
+    val topicModel = solver match {
+      case "mh" => Solver.fitMetropolisHastings(gc, vectors, ldaConfig)
+      case "naive" => Solver.fitNaive(gc, vectors, ldaConfig)
+    }
+
+    // Construct timeout and execution context for final operations
+    implicit val timeout = new Timeout(300 seconds)
+    implicit val ec = ExecutionContext.Implicits.global
+
+    // Print top 50 topics
+    var topicNumber = 1
+    val inverseMap = dictionary.mapping.map(_.swap)
+    topicModel.describe(50).foreach {
+      case topicDescription =>
+        println(s"Topic $topicNumber")
+        topicNumber += 1
+        for (i <- 0 until topicDescription.length) {
+          val k = topicDescription(i)._1.toInt
+          val p = topicDescription(i)._2
+          println(s"   ${inverseMap(k)}:         $p")
+        }
+    }
+
+    // Perform cleanup
+    Await.result(topicModel.wordTopicCounts.destroy(), timeout.duration)
+    Await.result(topicModel.topicCounts.destroy(), timeout.duration)
+
+  }
+
+  /**
+    * Solves using Spark algorithm
+    *
+    * @param config The LDA configuration
+    * @param dictionary The dictionary
+    * @param vectors The data set as an RDD of sparse vectors
+    * @param sc The spark context
+    * @param gc The glint client
+    */
+  def solveSpark(config: Config, dictionary: DictionaryTF, vectors: RDD[SparseVector[Int]], sc: SparkContext,
+                 gc: Client): Unit = {
+
+    // Transform data set to spark MLLib vectors
+    val sparkVectors: RDD[(Long, org.apache.spark.mllib.linalg.Vector)] = vectors.map { case x =>
+      new linalg.SparseVector(x.length, x.keysIterator.toArray, x.valuesIterator.map(y => y.toDouble).toArray)
+    }.zipWithIndex.map(_.swap)
+
+    // Construct MLLib LDA model
+    val ldaConfig = new LDA().setK(config.topics).setAlpha(config.α + 1.0).setBeta(config.β + 1.0)
+      .setMaxIterations(config.iterations)
+
+    // Fit to model
+    val ldaModel = ldaConfig.run(sparkVectors)
+
+    // Print top 50 topics
+    var topicNumber = 1
+    val inverseMap = dictionary.mapping.map(_.swap)
+    ldaModel.describeTopics(50).foreach {
+      case (ks, ps) =>
+        println(s"Topic ${topicNumber}")
+        topicNumber += 1
+        ks.zip(ps).foreach {
+          case (k, p) =>  println(s"   ${inverseMap(k)}:         ${p}")
+        }
+    }
 
   }
 
