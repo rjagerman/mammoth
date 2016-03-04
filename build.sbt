@@ -10,6 +10,11 @@ scalaVersion := "2.10.6"
 libraryDependencies += "ch.ethz.inf.da" %% "glint" % "0.1-SNAPSHOT"
 
 
+// Glint LDA
+
+libraryDependencies += "ch.ethz.inf.da" %% "glintlda" % "0.1-SNAPSHOT"
+
+
 // Spire (generic fast numerics)
 
 libraryDependencies += "org.spire-math" %% "spire" % "0.7.4"
@@ -26,6 +31,13 @@ libraryDependencies += "org.apache.spark" % "spark-mllib_2.10" % "1.5.1" % "prov
 libraryDependencies += "org.scalanlp" %% "breeze" % "0.11.2"
 
 libraryDependencies += "org.scalanlp" %% "breeze-natives" % "0.11.2"
+
+
+// Retry
+
+resolvers += "softprops-maven" at "http://dl.bintray.com/content/softprops/maven"
+
+libraryDependencies += "me.lessis" %% "retry" % "0.2.0"
 
 
 // WARC file parser
