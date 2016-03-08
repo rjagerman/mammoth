@@ -12,7 +12,7 @@ import com.typesafe.config.ConfigFactory
 import glint.Client
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.feature.{Dictionary, DictionaryTF}
-import org.apache.spark.mllib.clustering.LDA
+import org.apache.spark.mllib.clustering.{LocalLDAModel, DistributedLDAModel, LDA}
 import org.apache.spark.mllib.linalg
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
@@ -27,6 +27,8 @@ import scala.concurrent.{Await, ExecutionContext}
 case class Config(
                    algorithm: String = "mh",
                    blockSize: Int = 1000,
+                   checkpointSave: String = "",
+                   checkpointRead: String = "",
                    glintConfig: File = new File(""),
                    datasetLocation: String = "",
                    dictionaryLocation: String = "",
@@ -38,7 +40,6 @@ case class Config(
                    seed: Int = 42,
                    var topics: Int = 30,
                    var vocabularySize: Int = 60000,
-                   warmStart: String = "",
                    α: Double = 0.5,
                    β: Double = 0.01,
                    τ: Int = 1
@@ -122,9 +123,13 @@ object Main {
         (x, c) => c.copy(vocabularySize = x)
       } text s"The (maximum) size of the vocabulary (ignored when an initial model is loaded, default: ${default.vocabularySize})"
 
-      opt[String]('w', "warmstart") action {
-        (x, c) => c.copy(warmStart = x)
-      } text s"The location where checkpointed data will be stored and read from as a warmstart mechanic"
+      opt[String]("checkpointSave") action {
+        (x, c) => c.copy(checkpointSave = x)
+      } text s"The location where checkpointed data will be stored after failure"
+
+      opt[String]("checkpointRead") action {
+        (x, c) => c.copy(checkpointRead = x)
+      } text s"The location where checkpointed data will be read from as a warmstart mechanic"
 
       opt[Double]('α', "alpha") action {
         (x, c) => c.copy(α = x)
@@ -202,9 +207,12 @@ object Main {
     ldaConfig.setSeed(config.seed)
     ldaConfig.setTopics(config.topics)
     ldaConfig.setVocabularyTerms(dictionary.numFeatures)
+    ldaConfig.setPowerlawCutoff(2000000 / config.topics)
     ldaConfig.setα(config.α)
     ldaConfig.setβ(config.β)
     ldaConfig.setτ(config.τ)
+    ldaConfig.setCheckpointSave(config.checkpointSave)
+    ldaConfig.setCheckpointRead(config.checkpointRead)
 
     // Print LDA config
     println(s"Computing LDA model")
@@ -212,8 +220,8 @@ object Main {
 
     // Fit data to topic model
     val topicModel = solver match {
-      case "mh" => Solver.fitMetropolisHastings(gc, vectors, ldaConfig)
-      case "naive" => Solver.fitNaive(gc, vectors, ldaConfig)
+      case "mh" => Solver.fitMetropolisHastings(sc, gc, vectors, ldaConfig)
+      case "naive" => Solver.fitNaive(sc, gc, vectors, ldaConfig)
     }
 
     // Construct timeout and execution context for final operations
@@ -232,6 +240,11 @@ object Main {
           val p = topicDescription(i)._2
           println(s"   ${inverseMap(k)}:         $p")
         }
+    }
+
+    // Write to file
+    if (!config.finalModel.isEmpty) {
+      topicModel.writeToFile(new File(config.finalModel))
     }
 
     // Perform cleanup
@@ -258,11 +271,22 @@ object Main {
     }.zipWithIndex.map(_.swap)
 
     // Construct MLLib LDA model
+    val sparkLDAAlgorithm = "em"
     val ldaConfig = new LDA().setK(config.topics).setAlpha(config.α + 1.0).setBeta(config.β + 1.0)
-      .setMaxIterations(config.iterations)
+      .setSeed(config.seed).setMaxIterations(config.iterations).setOptimizer(sparkLDAAlgorithm)
 
     // Fit to model
-    val ldaModel = ldaConfig.run(sparkVectors)
+    val ldaModel = sparkLDAAlgorithm match {
+      case "em" =>
+        val model = ldaConfig.run(sparkVectors).asInstanceOf[DistributedLDAModel]
+        println(s"Log likelihood: ${model.logLikelihood}")
+        model
+
+      case "online" =>
+        val model = ldaConfig.run(sparkVectors).asInstanceOf[LocalLDAModel]
+        println(s"Log likelihood: ${model.logLikelihood(sparkVectors)}")
+        model
+    }
 
     // Print top 50 topics
     var topicNumber = 1
@@ -366,6 +390,14 @@ object Main {
     */
   def createSparkContext(): SparkContext = {
     val sparkConf = new SparkConf().setAppName("Mammoth")
+    sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    sparkConf.registerKryoClasses(Array(
+      classOf[SparseVector[Int]],
+      classOf[SparseVector[Long]],
+      classOf[SparseVector[Double]],
+      classOf[SparseVector[Float]]
+    ))
+    glintlda.util.registerKryo(sparkConf)
     new SparkContext(sparkConf)
   }
 
