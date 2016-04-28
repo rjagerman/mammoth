@@ -2,13 +2,13 @@
 Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/) and [Glint](https://github.com/rjagerman/glint). This project is a continuation of the [Web Scale Data Processing and Mining Project](https://github.com/lukaselmer/ethz-web-scale-data-mining-project/).
 
 ## Downloading the 1000-topic LDA model
-We have used this software to train a 1000-topics LDA model on the full ClueWeb12 data set. The model is publicly available for download [here](https://github.com/rjagerman/mammoth/raw/master/topicmodels/1000topics.csv.gz) (gzipped: 609MB, uncompressed: 2GB). The file structure looks something like this:
+We have used this software to train a 1000-topic LDA model on the full ClueWeb12 data set using a truncated vocabulary of 100,000 terms. The model is publicly available for download [here](https://github.com/rjagerman/mammoth/raw/master/topicmodels/1000topics.csv.gz) (gzipped: 609MB, uncompressed: 2GB). The file structure looks something like this:
 
     0 0.001 0.002 0.00001 0.3 0.001
     1 0.500 0.698 0.99998 0.1 0.899
     2 0.499 0.3   0.00001 0.2 0.1
    
-The features are represented as rows and the topics as columns. Each row's first column states the feature number (corresponding with the dictionary). The remaining columns represent the probability of that feature for the respective topic. The probabilities per column add up to 1.
+The features are represented as rows and the topics as columns. Each row's first column states the feature number (corresponding with the dictionary, which can be found [here](https://github.com/rjagerman/mammoth/blob/master/topicmodels/dictionary.txt?raw=true)). The remaining columns represent the probability of that feature for the respective topic. The probabilities per column add up to 1.
 
 ## Compiling
 To compile Mammoth you will need to use [sbt](http://www.scala-sbt.org/), which will take care of all dependencies. You can compile the application from the repository directory by running:
