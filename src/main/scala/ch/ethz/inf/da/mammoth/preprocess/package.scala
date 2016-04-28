@@ -1,10 +1,15 @@
 package ch.ethz.inf.da.mammoth
 
+import java.util.concurrent.Executors
+
 import com.github.aztek.porterstemmer.PorterStemmer
 import com.typesafe.scalalogging.slf4j.Logger
 import de.l3s.boilerpipe.extractors.ArticleExtractor
 import org.jsoup.Jsoup
 import org.slf4j.LoggerFactory
+
+import scala.concurrent.{ExecutionContext, Await, Future}
+import scala.concurrent.duration._
 
 /**
  * Preprocessing functions
@@ -78,6 +83,9 @@ package object preprocess {
   @transient
   protected lazy val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
 
+  private implicit val timeout = 2 minutes
+  private implicit val ec = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
+
   /**
    * Processes an input stream and extracts the plain text
    *
@@ -85,10 +93,22 @@ package object preprocess {
    * @return The plain text representation
    */
   def htmlToText(input: String): String = try {
-    //ArticleExtractor.INSTANCE.getText(input)
-    Jsoup.parse(input).body().text()
+    if (input.length > 4000000) {
+      Await.result(Future {
+        //ArticleExtractor.INSTANCE.getText(input)
+        try {
+          Jsoup.parse(input).body().text()
+        } catch {
+          case e: Exception => ""
+          case e: StackOverflowError => ""
+        }
+      }, timeout)
+    } else {
+      Jsoup.parse(input).body().text()
+    }
   } catch {
     case e: Exception => ""
+    case e: StackOverflowError => ""
   }
 
   /**
@@ -97,8 +117,11 @@ package object preprocess {
    * @param input The input text
    * @return The tokens
    */
-  def tokenize(input: String): Iterator[String] = {
+  def tokenize(input: String): Iterator[String] = try {
     whitespace.replaceAllIn(tokenizer.replaceAllIn(input, " "), " ").split(" ").toIterator
+  } catch {
+    case e: Exception => Array("").toIterator
+    case e: StackOverflowError => Array("").toIterator
   }
 
   /**
@@ -107,13 +130,17 @@ package object preprocess {
    * @param input The tokens
    * @return Preprocessed and cleaned up tokens
    */
-  def preprocess(input: Iterable[String]): Iterable[String] = {
+  def preprocess(input: Iterable[String]): Iterable[String] = try {
     input
+      .filter(x ⇒ x.length() <= 32) // Filter out very large words
       .map(x ⇒ x.toLowerCase()) // Convert everything to lower case
       .filter(x ⇒ !stopWords.contains(x)) // Remove stop words
       .map(x ⇒ PorterStemmer.stem(x)) // Stem tokens
       .filter(x ⇒ x.length() >= 3) // Only allow words with a minimum of 3 characters
       .filter(x ⇒ x.length() <= 14) // Only allow words with a maximum of 14 characters
+  } catch {
+    case e: Exception => Array("").toIterable
+    case e: StackOverflowError => Array("").toIterable
   }
 
 }

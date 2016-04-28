@@ -35,7 +35,11 @@ object CluewebReader {
 
     // Filter out records that are not reponses and get the HTML contents from the remaining WARC records
     val htmlDocuments = warcRecords.filter {
-      record => record.getHeader("WARC-Type").value == "response"
+      record => try {
+        record.getHeader("WARC-Type").value == "response"
+      } catch {
+        case e: Exception => false
+      }
     }.map {
       record =>
         val id = record.getHeader("WARC-TREC-ID").value
