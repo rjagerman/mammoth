@@ -3,17 +3,20 @@ package ch.ethz.inf.da.mammoth
 import java.io.File
 
 import akka.util.Timeout
-import breeze.linalg.SparseVector
+import breeze.linalg.{sum, SparseVector}
 import ch.ethz.inf.da.mammoth.document.TokenDocument
 import ch.ethz.inf.da.mammoth.io.{CluewebReader, DictionaryIO}
-import glintlda.{LDAConfig, Solver}
+import glint.iterators.RowBlockIterator
+import glint.models.client.buffered.BufferedBigMatrix
+import glintlda.{LDAModel, LDAConfig, Solver}
 import ch.ethz.inf.da.mammoth.util.fileExists
 import com.typesafe.config.ConfigFactory
 import glint.Client
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.mllib.feature.{Dictionary, DictionaryTF}
-import org.apache.spark.mllib.clustering.{LocalLDAModel, DistributedLDAModel, LDA}
+import org.apache.spark.mllib.clustering.{OnlineLDAOptimizer, LocalLDAModel, DistributedLDAModel, LDA}
 import org.apache.spark.mllib.linalg
+import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{SparkConf, SparkContext}
@@ -29,15 +32,19 @@ case class Config(
                    blockSize: Int = 1000,
                    checkpointSave: String = "",
                    checkpointRead: String = "",
+                   checkpointEvery: Int = 1,
                    glintConfig: File = new File(""),
                    datasetLocation: String = "",
                    dictionaryLocation: String = "",
                    finalModel: String = "",
+                   forceRepartition: Boolean = false,
                    iterations: Int = 100,
                    mhSteps: Int = 2,
                    partitions: Int = 336,
                    rddLocation: String = "",
                    seed: Int = 42,
+                   subsample: Double = 1.0,
+                   testSize: Double = 0.0,
                    var topics: Int = 30,
                    var vocabularySize: Int = 60000,
                    α: Double = 0.5,
@@ -66,12 +73,12 @@ object Main {
         (x, c) => c.copy(algorithm = x)
       } validate {
         case x: String =>
-          if (Set("spark", "mh", "naive").contains(x)) {
+          if (Set("sparkonline", "sparkem", "mh", "naive").contains(x)) {
             success
           } else {
-            failure("algorithm must be either spark, mh or naive")
+            failure("algorithm must be either sparkonline, sparkem, mh or naive")
           }
-      } text s"The algorithm to use (either spark, mh or naive)"
+      } text s"The algorithm to use (either sparkonline, sparkem, mh or naive)"
 
       opt[Int]('b', "blocksize") action {
         (x, c) => c.copy(blockSize = x)
@@ -131,6 +138,12 @@ object Main {
         (x, c) => c.copy(checkpointRead = x)
       } text s"The location where checkpointed data will be read from as a warmstart mechanic"
 
+      opt[Int]("checkpointEvery") action {
+        (x, c) => c.copy(checkpointEvery = x)
+      } validate {
+        case x => if (x >= 1) success else failure("checkpointEvery must be larger or equal to 1")
+      } text s"If checkpointSave is set, this indicates the frequency of checkpoints (every x iterations)"
+
       opt[Double]('α', "alpha") action {
         (x, c) => c.copy(α = x)
       } validate {
@@ -142,6 +155,22 @@ object Main {
       } validate {
         case x => if (x > 0) success else failure("β must be larger than 0")
       } text s"The (symmetric) β prior on the topic-word distribution (default: ${default.β})"
+
+      opt[Double]("test") action {
+        (x, c) => c.copy(testSize = x)
+      } validate {
+        case x => if (x >= 0.0 && x <= 1.0) success else failure("test must be between in range [0.0, 1.0]")
+      } text s"The fraction of the data set to use for testing instead of training"
+
+      opt[Double]("subsample") action {
+        (x, c) => c.copy(subsample = x)
+      } validate {
+        case x => if (x >= 0.0 && x <= 1.0) success else failure("subsample must be between in range [0.0, 1.0]")
+      } text s"The subsample ratio (default: ${default.subsample})"
+
+      opt[Boolean]("forceRepartition") action {
+        (x, c) => c.copy(forceRepartition = x)
+      } text s"Whether to force a repartition before training (default: ${default.forceRepartition})"
 
       opt[Int]('τ', "tau") action {
         (x, c) => c.copy(τ = x)
@@ -167,17 +196,45 @@ object Main {
     val gc = createGlintClient(config.glintConfig)
 
     // Read dictionary and dataset depending on configuration
-    val (dictionary: DictionaryTF, vectors: RDD[SparseVector[Int]]) = readDictionaryAndDataset(sc, config)
+    val (dictionary: DictionaryTF, fullDataset: RDD[SparseVector[Int]]) = readDictionaryAndDataset(sc, config)
+
+    // Sub sample if needed
+    val sampledDataset = if (config.subsample < 1.0) {
+      fullDataset.sample(false, config.subsample, config.seed)
+    } else {
+      fullDataset
+    }
+
+    // Data set size
+    println(s"Data set size: ${sampledDataset.count()}")
+
+    // Split training and test size (if required, otherwise keep original RDD for training)
+    var (trainingSet: RDD[SparseVector[Int]], testSet: RDD[SparseVector[Int]]) = if (config.testSize > 0.0) {
+      val randomSplit = sampledDataset.randomSplit(Array(1.0 - config.testSize, config.testSize), config.seed)
+      (randomSplit(0), randomSplit(1))
+    } else {
+      (sampledDataset, sc.emptyRDD[SparseVector[Int]])
+    }
+
+    // Perform forced repartition if necessary
+    if (config.forceRepartition) {
+      trainingSet = trainingSet.repartition(config.partitions)
+      testSet = testSet.repartition(config.partitions)
+    }
 
     config.algorithm match {
-      case "mh" => solve(config, dictionary, vectors, sc, gc, "mh")
-      case "naive" => solve(config, dictionary, vectors, sc, gc, "naive")
-      case "spark" => solveSpark(config, dictionary, vectors, sc, gc)
+      case "mh" => solve(config, dictionary, trainingSet, testSet, sc, gc, "mh")
+      case "naive" => solve(config, dictionary, trainingSet, testSet, sc, gc, "naive")
+      case "sparkonline" => solveSpark(config, dictionary, trainingSet, testSet, sc, gc)
+      case "sparkem" => solveSpark(config, dictionary, trainingSet, testSet, sc, gc)
     }
 
     // Stop glint & spark
     gc.stop()
     sc.stop()
+
+    // Exit application
+    System.exit(0)
 
   }
 
@@ -186,14 +243,15 @@ object Main {
     *
     * @param config The LDA configuration
     * @param dictionary The dictionary
-    * @param vectors The data set as an RDD of sparse vectors
+    * @param trainingSet The data set as an RDD of sparse vectors
     * @param sc The spark context
     * @param gc The glint client
     * @param solver The solver to use
     */
   def solve(config: Config,
             dictionary: DictionaryTF,
-            vectors: RDD[SparseVector[Int]],
+            trainingSet: RDD[SparseVector[Int]],
+            testSet: RDD[SparseVector[Int]],
             sc: SparkContext,
             gc: Client,
             solver: String): Unit = {
@@ -213,6 +271,7 @@ object Main {
     ldaConfig.setτ(config.τ)
     ldaConfig.setCheckpointSave(config.checkpointSave)
     ldaConfig.setCheckpointRead(config.checkpointRead)
+    ldaConfig.setCheckpointEvery(config.checkpointEvery)
 
     // Print LDA config
     println(s"Computing LDA model")
@@ -220,8 +279,27 @@ object Main {
 
     // Fit data to topic model
     val topicModel = solver match {
-      case "mh" => Solver.fitMetropolisHastings(sc, gc, vectors, ldaConfig)
-      case "naive" => Solver.fitNaive(sc, gc, vectors, ldaConfig)
+      case "mh" =>
+        val startTime = System.currentTimeMillis()
+        val model = Solver.fitMetropolisHastings(sc, gc, trainingSet, ldaConfig)
+        val totalTime = System.currentTimeMillis() - startTime
+        println(s"Total training time: ${totalTime}ms")
+
+        if (config.testSize > 0.0) {
+          Solver.test(sc, gc, model, testSet, 50)
+        }
+        model
+
+      case "naive" =>
+        val startTime = System.currentTimeMillis()
+        val model = Solver.fitNaive(sc, gc, trainingSet, ldaConfig)
+        val totalTime = System.currentTimeMillis() - startTime
+        println(s"Total training time: ${totalTime}ms")
+
+        if (config.testSize > 0.0) {
+          Solver.test(sc, gc, model, testSet, 50)
+        }
+        model
     }
 
     // Construct timeout and execution context for final operations
@@ -244,7 +322,7 @@ object Main {
 
     // Write to file
     if (!config.finalModel.isEmpty) {
-      topicModel.writeToFile(new File(config.finalModel))
+      topicModel.writeProbabilitiesToCSV(new File(config.finalModel))
     }
 
     // Perform cleanup
@@ -258,34 +336,130 @@ object Main {
     *
     * @param config The LDA configuration
     * @param dictionary The dictionary
-    * @param vectors The data set as an RDD of sparse vectors
+    * @param trainingSet The data set as an RDD of sparse vectors
     * @param sc The spark context
     * @param gc The glint client
     */
-  def solveSpark(config: Config, dictionary: DictionaryTF, vectors: RDD[SparseVector[Int]], sc: SparkContext,
+  def solveSpark(config: Config,
+                 dictionary: DictionaryTF,
+                 trainingSet: RDD[SparseVector[Int]],
+                 testSet: RDD[SparseVector[Int]],
+                 sc: SparkContext,
                  gc: Client): Unit = {
 
     // Transform data set to spark MLLib vectors
-    val sparkVectors: RDD[(Long, org.apache.spark.mllib.linalg.Vector)] = vectors.map { case x =>
-      new linalg.SparseVector(x.length, x.keysIterator.toArray, x.valuesIterator.map(y => y.toDouble).toArray)
-    }.zipWithIndex.map(_.swap)
+    val sparkVectors = trainingSet.zipWithIndex.map(_.swap).map { case (id, x) =>
+      (id, Vectors.sparse(x.length, x.activeKeysIterator.toArray, x.activeValuesIterator.map(y => y.toDouble).toArray))
+    }.repartition(config.partitions)
+    sparkVectors.persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+    val testSparkVectors = testSet.zipWithIndex.map(_.swap).map { case (id, x) =>
+      (id, Vectors.sparse(x.length, x.activeKeysIterator.toArray, x.activeValuesIterator.map(y => y.toDouble).toArray))
+    }.repartition(config.partitions)
+    testSparkVectors.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
     // Construct MLLib LDA model
-    val sparkLDAAlgorithm = "em"
+    val sparkLDAAlgorithm = config.algorithm match {
+      case "sparkem" => "em"
+      case "sparkonline" => "online"
+    }
     val ldaConfig = new LDA().setK(config.topics).setAlpha(config.α + 1.0).setBeta(config.β + 1.0)
       .setSeed(config.seed).setMaxIterations(config.iterations).setOptimizer(sparkLDAAlgorithm)
 
     // Fit to model
     val ldaModel = sparkLDAAlgorithm match {
       case "em" =>
+
+        // Compute model
+        val startTime = System.currentTimeMillis()
         val model = ldaConfig.run(sparkVectors).asInstanceOf[DistributedLDAModel]
-        println(s"Log likelihood: ${model.logLikelihood}")
-        model
+        val totalTime = System.currentTimeMillis() - startTime
+        println(s"Total training time: ${totalTime}ms")
+        val localModel = model.toLocal
+
+        // Compute perplexity
+        val trainTokens = sparkVectors.map {
+          case (id, v) => v.toSparse.values.sum
+        }.sum()
+        val trainLogLikelihood = model.logLikelihood
+        println(s"Train tokens:         ${trainTokens}")
+        println(s"Train log likelihood: ${trainLogLikelihood}")
+        println(s"Train perplexity:     ${Math.exp(-trainLogLikelihood / trainTokens.toDouble)}")
+
+        // Run tests if necessary
+        if (config.testSize > 0.0) {
+
+          // Construct a new LDA model on the parameter server form the spark LocalLDAModel
+          val testTokens = sparkVectors.map {
+            case (id, v) => v.toSparse.values.sum
+          }.sum()
+          val glintLDAConfig = new LDAConfig()
+          glintLDAConfig.setTopics(config.topics)
+          glintLDAConfig.setVocabularyTerms(config.vocabularySize)
+          glintLDAConfig.setα(config.α)
+          glintLDAConfig.setβ(config.β)
+          glintLDAConfig.setBlockSize(config.blockSize)
+          glintLDAConfig.setPartitions(config.partitions)
+          val glintModel = LDAModel.fromSpark(localModel, gc, glintLDAConfig)
+
+          // Test perplexity on training and test set
+          Solver.test(sc, gc, glintModel, testSet, 20)
+        }
+
+        // Return model
+        localModel
 
       case "online" =>
-        val model = ldaConfig.run(sparkVectors).asInstanceOf[LocalLDAModel]
-        println(s"Log likelihood: ${model.logLikelihood(sparkVectors)}")
-        model
+
+        val startTime = System.currentTimeMillis()
+
+        // Optimal mini batch fraction
+        val trainSize = sparkVectors.count().toDouble
+        val mbf = (2.0 / config.iterations.toDouble) + (1.0 / trainSize)
+
+        // Run online LDA
+        val onlineLdaConfig = ldaConfig.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(math.min(1.0, mbf)))
+        val ldaModel = onlineLdaConfig.run(sparkVectors).asInstanceOf[LocalLDAModel]
+        val totalTime = System.currentTimeMillis() - startTime
+        println(s"Total training time: ${totalTime}ms")
+
+        // Compute perplexity
+        /*val trainTokens = sparkVectors.map {
+          case (id, v) => v.toSparse.values.sum
+        }.sum()
+        val trainLoglikelihood = ldaModel.logLikelihood(sparkVectors)
+        println(s"Train tokens:         ${trainTokens}")
+        println(s"Train log likelihood: ${trainLoglikelihood}")
+        println(s"Train perplexity:     ${Math.exp(-trainLoglikelihood / trainTokens.toDouble)}")*/
+
+        // Test if necessary
+        if (config.testSize > 0.0) {
+
+          /*val testTokens = testSparkVectors.map {
+            case (id, v) => v.toSparse.values.sum
+          }.sum()
+          val testLoglikelihood = ldaModel.logLikelihood(testSparkVectors)
+          println(s"Test tokens:          ${testTokens}")
+          println(s"Test log likelihood:  ${testLoglikelihood}")
+          println(s"Test perplexity:      ${Math.exp(-testLoglikelihood / testTokens.toDouble)}")*/
+          // Construct a new LDA model on the parameter server form the spark LocalLDAModel
+          val testTokens = sparkVectors.map {
+            case (id, v) => v.toSparse.values.sum
+          }.sum()
+          val glintLDAConfig = new LDAConfig()
+          glintLDAConfig.setTopics(config.topics)
+          glintLDAConfig.setVocabularyTerms(config.vocabularySize)
+          glintLDAConfig.setα(config.α)
+          glintLDAConfig.setβ(config.β)
+          glintLDAConfig.setBlockSize(config.blockSize)
+          glintLDAConfig.setPartitions(config.partitions)
+          val glintModel = LDAModel.fromSpark(ldaModel, gc, glintLDAConfig)
+
+          // Test perplexity on training and test set
+          Solver.test(sc, gc, glintModel, testSet, 20)
+        }
+
+        ldaModel
     }
 
     // Print top 50 topics
