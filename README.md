@@ -2,7 +2,7 @@
 Web-scale topic modelling for the [ClueWeb12](http://www.lemurproject.org/clueweb12.php/) dataset using [Spark](https://spark.apache.org/) and [Glint](https://github.com/rjagerman/glint). This project is a continuation of the [Web Scale Data Processing and Mining Project](https://github.com/lukaselmer/ethz-web-scale-data-mining-project/).
 
 ## Downloading the 1000-topic LDA model
-We have used this software to train a 1000-topic LDA model on the full ClueWeb12 data set using a truncated vocabulary of 100,000 terms. The model is publicly available for download [here](https://github.com/rjagerman/mammoth/raw/master/topicmodels/1000topics.csv.gz) (gzipped: 609MB, uncompressed: 2GB). The file structure looks something like this:
+We have used this software to train a 1000-topic LDA model on the full ClueWeb12 data set using a truncated vocabulary of 100,000 terms. The model is publicly available for download [here](https://drive.google.com/open?id=0Byx2RBLwFKFsa2FkRF80ZlpNYms) (gzipped: 609MB, uncompressed: 2GB). The file structure looks something like this:
 
     0 0.001 0.002 0.00001 0.3 0.001
     1 0.500 0.698 0.99998 0.1 0.899
